@@ -1,5 +1,6 @@
 from pathlib import Path
 import logging
+import difflib
 
 from huggingface_hub import HfApi
 from anthropic import Anthropic
@@ -8,6 +9,45 @@ logger = logging.getLogger(__name__)
 
 from .tempdir import temp_dir_if_none
 from .task_type import infer_transformers_task_type
+
+
+def print_colored_diff(original: str, new: str, filename: str = "README.md"):
+    """Print a colored diff between original and new content."""
+    # ANSI color codes
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    BLUE = '\033[94m'
+    RESET = '\033[0m'
+
+    print(f"\n{BLUE}=== DIFF for {filename} ==={RESET}")
+
+    # Split content into lines for diff
+    original_lines = original.splitlines()
+    new_lines = new.splitlines()
+
+    # Generate diff
+    diff = difflib.unified_diff(
+        original_lines,
+        new_lines,
+        fromfile=f"{filename} (original)",
+        tofile=f"{filename} (migrated)",
+        lineterm=""
+    )
+
+    # Print colored diff
+    for line in diff:
+        if line.startswith('---') or line.startswith('+++'):
+            print(f"{BLUE}{line}{RESET}")
+        elif line.startswith('@@'):
+            print(f"{BLUE}{line}{RESET}")
+        elif line.startswith('+'):
+            print(f"{GREEN}{line}{RESET}")
+        elif line.startswith('-'):
+            print(f"{RED}{line}{RESET}")
+        else:
+            print(line)
+
+    print(f"{BLUE}=== END DIFF ==={RESET}\n")
 
 
 def update_readme_content(anthropic_client: Anthropic, content: str, task_type: str, repo_id: str) -> str:
@@ -95,7 +135,9 @@ def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, out
 
     # replace the content of the readme
     new_readme_content = update_readme_content(anthropic_client, orig_readme_content, task_type, repo_id)
-    logger.info(f"MIGRATED README: {new_readme_content}")
+
+    # Print colored diff
+    print_colored_diff(orig_readme_content, new_readme_content)
 
     with temp_dir_if_none(output_dir) as output_dir:
         output_readme_path = output_dir / "README.md"
