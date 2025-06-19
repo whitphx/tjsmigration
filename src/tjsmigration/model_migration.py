@@ -1,15 +1,16 @@
-import os
-import contextlib
 import logging
 import tempfile
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Generator, Literal
+from typing import Literal
 from dataclasses import dataclass
 
 import onnx
 from huggingface_hub import HfApi
+
+from .tempdir import temp_dir_if_none
+
 
 logger = logging.getLogger(__name__)
 
@@ -87,15 +88,6 @@ def get_quantization_configs(onnx_dir: Path) -> list[QuantizationConfig]:
     return quantization_configs
 
 
-@contextlib.contextmanager
-def temp_dir_if_none(dir_path: Path | None) -> Generator[Path, None, None]:
-    if dir_path is None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            yield Path(temp_dir)
-    else:
-        yield dir_path
-
-
 @dataclass
 class QuantizationResult:
     success: bool
@@ -148,7 +140,7 @@ def create_summary_text(results: list[QuantizationResult]) -> str:
     return summary
 
 
-def migrate_model_files(hf_api: HfApi, repo_id: str, output_dir: Path, upload: bool):
+def migrate_model_files(hf_api: HfApi, repo_id: str, output_dir: Path | None, upload: bool):
     downloaded_path = hf_api.snapshot_download(repo_id=repo_id, repo_type="model")
 
     onnx_dir = Path(downloaded_path) / "onnx"

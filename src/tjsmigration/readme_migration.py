@@ -6,6 +6,7 @@ from anthropic import Anthropic
 
 logger = logging.getLogger(__name__)
 
+from .tempdir import temp_dir_if_none
 from .task_type import infer_transformers_task_type
 
 
@@ -82,34 +83,35 @@ console.log(result);
     return migrated_content
 
 
-def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir: Path, upload: bool):
+def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir: Path | None, upload: bool):
     downloaded_path = hf_api.snapshot_download(repo_id=repo_id, repo_type="model")
     readme_path = Path(downloaded_path) / "README.md"
 
     with readme_path.open("r") as f:
-        readme_content = f.read()
+        orig_readme_content = f.read()
 
     repo_info = hf_api.repo_info(repo_id)
     task_type = infer_transformers_task_type(repo_info)
 
     # replace the content of the readme
-    readme_content = update_readme_content(anthropic_client, readme_content, task_type, repo_id)
-    logger.info(f"MIGRATED README: {readme_content}")
+    new_readme_content = update_readme_content(anthropic_client, orig_readme_content, task_type, repo_id)
+    logger.info(f"MIGRATED README: {new_readme_content}")
 
-    output_readme_path = output_dir / "README.md"
-    with output_readme_path.open("w") as f:
-        f.write(readme_content)
+    with temp_dir_if_none(output_dir) as output_dir:
+        output_readme_path = output_dir / "README.md"
+        with output_readme_path.open("w") as f:
+            f.write(new_readme_content)
 
-    if upload:
-        logger.info(f"Uploading README.md to {repo_id}...")
-        hf_api.upload_file(
-            path_or_fileobj=output_readme_path,
-            path_in_repo="README.md",
-            repo_id=repo_id,
-            repo_type="model",
-            commit_message="Update README.md for Transformers.js v3",
-            create_pr=True,
-        )
-        logger.info(f"Uploaded README.md to {repo_id}")
-    else:
-        logger.info("Skipping upload")
+        if upload:
+            logger.info(f"Uploading README.md to {repo_id}...")
+            hf_api.upload_file(
+                path_or_fileobj=output_readme_path,
+                path_in_repo="README.md",
+                repo_id=repo_id,
+                repo_type="model",
+                commit_message="Update README.md for Transformers.js v3",
+                create_pr=True,
+            )
+            logger.info(f"Uploaded README.md to {repo_id}")
+        else:
+            logger.info("Skipping upload")
