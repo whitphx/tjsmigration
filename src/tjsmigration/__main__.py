@@ -95,7 +95,13 @@ def temp_dir_if_none(dir_path: Path | None) -> Generator[Path, None, None]:
         yield dir_path
 
 
-def call_quantization_script(quantization_config: QuantizationConfig, output_dir: Path):
+@dataclass
+class QuantizationResult:
+    success: bool
+    config: QuantizationConfig
+
+
+def call_quantization_script(quantization_config: QuantizationConfig, output_dir: Path) -> QuantizationResult:
     with tempfile.TemporaryDirectory() as temp_input_dir:
         # copy the base model file into the temp input directory
         base_model = quantization_config.base_model
@@ -113,7 +119,32 @@ def call_quantization_script(quantization_config: QuantizationConfig, output_dir
         ]
 
         logger.info(f"Running command: {cmd}")
-        subprocess.run(cmd, cwd=TRANSFORMERS_JS_PATH)
+        try:
+            subprocess.run(cmd, cwd=TRANSFORMERS_JS_PATH)
+            return QuantizationResult(success=True, config=quantization_config)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error running quantization script: {e}")
+            return QuantizationResult(success=False, config=quantization_config)
+
+
+
+def create_reason_text(reason: Literal["missing", "invalid"]) -> str:
+    if reason == "missing":
+        return "added"
+    elif reason == "invalid":
+        return "replaced because it was invalid"
+    else:
+        return ""
+
+
+def create_summary_text(results: list[QuantizationResult]) -> str:
+    summary = "### Applied Quantizations\n"
+    for result in results:
+        summary += f"#### {'✅' if result.success else '❌'} `{result.config.base_model.stem}.onnx`\n"
+        for quantization in result.config.quantizations:
+            summary += f"- `{quantization.type}` ({create_reason_text(quantization.reason)})\n"
+        summary += "\n"
+    return summary
 
 
 @click.command()
@@ -134,9 +165,14 @@ def migrate(repo_id: str, output_dir: str | None):
     onnx_dir = Path(downloaded_path) / "onnx"
     quantization_configs = get_quantization_configs(onnx_dir)
 
+    results = []
     with temp_dir_if_none(output_dir) as output_dir:
         for quantization_config in quantization_configs:
-            call_quantization_script(quantization_config, output_dir)
+            result = call_quantization_script(quantization_config, output_dir)
+            results.append(result)
+
+    summary = create_summary_text(results)
+    logger.info(summary)
 
     # # upload the quantized models to the Hugging Face Hub
     # hf_api.upload_folder(repo_id=repo_id, folder_path=output_dir, repo_type="model")
