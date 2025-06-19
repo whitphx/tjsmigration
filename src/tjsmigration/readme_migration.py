@@ -19,6 +19,7 @@ from .task_type import infer_transformers_task_type
 
 class UserAction(Enum):
     ACCEPT = "accept"
+    EDIT = "edit"
     REGENERATE = "regenerate"
     QUIT = "quit"
 
@@ -81,7 +82,7 @@ def get_user_confirmation_and_edit(content: str, existing_instructions: list[str
         choice = input("\nWhat would you like to do? [y/e/r/q]: ").lower().strip()
 
         if choice == 'y':
-            return UserResponse(action=UserAction.ACCEPT, content=content)
+            return UserResponse(action=UserAction.ACCEPT)
         elif choice == 'e':
             # Create a temporary file for editing
             with tempfile.NamedTemporaryFile(mode='w+', suffix='.md', delete=False) as tmp_file:
@@ -102,7 +103,7 @@ def get_user_confirmation_and_edit(content: str, existing_instructions: list[str
                     # Show diff of the edited changes
                     print_colored_diff(content, edited_content, "README.md (after editing)")
 
-                    return UserResponse(action=UserAction.ACCEPT, content=edited_content)
+                    return UserResponse(action=UserAction.EDIT, content=edited_content)
                 except subprocess.CalledProcessError:
                     print(f"Error: Could not open editor '{editor}'. Please set the EDITOR environment variable.")
                     continue
@@ -131,7 +132,7 @@ def get_user_confirmation_and_edit(content: str, existing_instructions: list[str
             print("Invalid choice. Please enter 'y', 'e', 'r', or 'q'.")
 
 
-def update_readme_content(anthropic_client: Anthropic, content: str, task_type: str, repo_id: str, additional_instruction: str = "") -> str:
+def _generate_prompt(content: str, task_type: str, repo_id: str, additional_instructions: list[str]) -> str:
     prompt = f"""You are migrating a Transformers.js model repository README from v2 to v3. Your task is to update the README content while preserving its original structure and purpose.
 
 ## CRITICAL REQUIREMENTS:
@@ -190,21 +191,46 @@ console.log(result);
 ## Original README Content:
 {content}
 
-{"## ADDITIONAL USER INSTRUCTION:" if additional_instruction else ""}
-{additional_instruction}
+{"## ADDITIONAL USER INSTRUCTION:" if additional_instructions else ""}
+{'\n\n'.join(additional_instructions)}
 
 ## MIGRATED README (output only this):"""
+    return prompt
 
-    response = anthropic_client.messages.create(
-        model="claude-3-5-haiku-latest",
-        max_tokens=4000,
-        temperature=0.1,
-        messages=[
-            {"role": "user", "content": prompt},
-        ],
-    )
-    migrated_content = response.content[0].text.strip()
-    return migrated_content
+
+def call_readme_update_llm(anthropic_client: Anthropic, orig_content: str, task_type: str, repo_id: str, additional_instructions: list[str]) -> str:
+        prompt = _generate_prompt(orig_content, task_type, repo_id, additional_instructions)
+
+        response = anthropic_client.messages.create(
+            model="claude-3-5-haiku-latest",
+            max_tokens=4000,
+            temperature=0.1,
+            messages=[
+                {"role": "user", "content": prompt},
+            ],
+        )
+        proposed_content = response.content[0].text.strip()
+        return proposed_content
+
+def update_readme_content(anthropic_client: Anthropic, orig_content: str, task_type: str, repo_id: str) -> str:
+    additional_instructions = []
+    while True:
+        proposed_content = call_readme_update_llm(anthropic_client, orig_content, task_type, repo_id, additional_instructions)
+
+        print_colored_diff(orig_content, proposed_content)
+
+        user_response = get_user_confirmation_and_edit(proposed_content, additional_instructions)
+
+        if user_response.action == UserAction.ACCEPT:
+            return proposed_content
+        elif user_response.action == UserAction.EDIT:
+            return user_response.content
+        elif user_response.action == UserAction.REGENERATE:
+            additional_instructions.append(user_response.additional_instruction)
+            continue
+        elif user_response.action == UserAction.QUIT:
+            logger.info("Operation cancelled by user")
+            raise KeyboardInterrupt
 
 
 def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir: Path | None, upload: bool):
@@ -217,38 +243,12 @@ def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, out
     repo_info = hf_api.repo_info(repo_id)
     task_type = infer_transformers_task_type(repo_info)
 
-    # Generate and potentially regenerate content based on user feedback
-    additional_instructions = []
-    while True:
-        # Combine all additional instructions
-        combined_instruction = "\n".join(additional_instructions) if additional_instructions else ""
-
-        # Generate the new content
-        new_readme_content = update_readme_content(anthropic_client, orig_readme_content, task_type, repo_id, combined_instruction)
-
-        # Print colored diff
-        print_colored_diff(orig_readme_content, new_readme_content)
-
-        # Ask user for confirmation and allow editing
-        user_response = get_user_confirmation_and_edit(new_readme_content, additional_instructions)
-
-        if user_response.action == UserAction.ACCEPT:
-            final_readme_content = user_response.content
-            break
-        elif user_response.action == UserAction.REGENERATE:
-            if user_response.additional_instruction:
-                additional_instructions.append(user_response.additional_instruction)
-                print(f"Additional instructions: {'\n'.join(additional_instructions)}")
-            print("\nRegenerating README content...")
-            continue
-        elif user_response.action == UserAction.QUIT:
-            logger.info("Operation cancelled by user")
-            return
+    new_readme_content = update_readme_content(anthropic_client, orig_readme_content, task_type, repo_id)
 
     with temp_dir_if_none(output_dir) as output_dir:
         output_readme_path = output_dir / "README.md"
         with output_readme_path.open("w") as f:
-            f.write(final_readme_content)
+            f.write(new_readme_content)
 
         if upload:
             logger.info(f"Uploading README.md to {repo_id}...")
