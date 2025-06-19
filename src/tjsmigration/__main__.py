@@ -150,12 +150,13 @@ def create_summary_text(results: list[QuantizationResult]) -> str:
 @click.command()
 @click.option("--repo-id", required=True)
 @click.option("--output-dir", required=False, type=click.Path(exists=False))
-def migrate(repo_id: str, output_dir: str | None):
+@click.option("--upload", required=False, type=bool, default=False)
+def migrate(repo_id: str, output_dir: str | None, upload: bool):
     token = os.getenv("HF_TOKEN")
     if not token:
         raise ValueError("HF_TOKEN is not set")
 
-    output_dir = Path(output_dir)
+    output_dir = Path(output_dir) if output_dir else None
 
     hf_api = HfApi(token=token)
     repo_info = hf_api.repo_info(repo_id)
@@ -167,15 +168,37 @@ def migrate(repo_id: str, output_dir: str | None):
 
     results = []
     with temp_dir_if_none(output_dir) as output_dir:
+        file_exists = len(list(output_dir.glob("*.onnx"))) > 0
+        if file_exists:
+            raise ValueError("Output directory already contains some files. Abort.")
+
+        logger.info("Quantizing models...")
+        logger.info(f"Quantization configs: {quantization_configs}")
         for quantization_config in quantization_configs:
             result = call_quantization_script(quantization_config, output_dir)
             results.append(result)
 
-    summary = create_summary_text(results)
-    logger.info(summary)
+        summary = create_summary_text(results)
+        logger.info(summary)
 
-    # # upload the quantized models to the Hugging Face Hub
-    # hf_api.upload_folder(repo_id=repo_id, folder_path=output_dir, repo_type="model")
+        new_file_exists = len(list(output_dir.glob("*.onnx"))) > 0
+
+        if upload:
+            if new_file_exists:
+                logger.info(f"Uploading quantized models to {repo_id}...")
+                commit_info = hf_api.upload_folder(
+                    repo_id=repo_id,
+                    folder_path=output_dir,
+                    path_in_repo="onnx",
+                    repo_type="model",
+                    commit_message="Add quantized ONNX model files",
+                    create_pr=True,
+                )
+                logger.info(f"Uploaded quantized models to the Hugging Face Hub: {commit_info}")
+            else:
+                logger.warning("No quantized models were created")
+        else:
+            logger.info("Skipping upload")
 
 
 if __name__ == "__main__":
