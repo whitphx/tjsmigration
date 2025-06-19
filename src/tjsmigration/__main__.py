@@ -4,6 +4,7 @@ from pathlib import Path
 
 import click
 from huggingface_hub import HfApi
+from anthropic import Anthropic
 
 from .model_migration import migrate_model_files
 from .readme_migration import migrate_readme
@@ -20,13 +21,18 @@ def migrate(repo_id: str, output_dir: str | None, upload: bool):
     if not token:
         raise ValueError("HF_TOKEN is not set")
 
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY is not set")
+
     output_dir = Path(output_dir) if output_dir else None
 
     hf_api = HfApi(token=token)
-    repo_info = hf_api.repo_info(repo_id)
+
+    anthropic_client = Anthropic(api_key=anthropic_api_key)
 
     migrate_model_files(hf_api=hf_api, repo_id=repo_id, output_dir=output_dir, upload=upload)
-    migrate_readme(hf_api=hf_api, repo_id=repo_id, output_dir=output_dir, upload=upload)
+    migrate_readme(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir=output_dir, upload=upload)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
