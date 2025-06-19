@@ -6,6 +6,7 @@ import click
 from huggingface_hub import HfApi
 
 from .model_migration import migrate_model_files
+from .readme_migration import migrate_readme
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ def migrate(repo_id: str, output_dir: str | None, upload: bool):
     repo_info = hf_api.repo_info(repo_id)
 
     migrate_model_files(hf_api=hf_api, repo_id=repo_id, output_dir=output_dir, upload=upload)
+    migrate_readme(hf_api=hf_api, repo_id=repo_id, output_dir=output_dir, upload=upload)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
