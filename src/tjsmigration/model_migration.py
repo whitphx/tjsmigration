@@ -67,7 +67,7 @@ def get_base_model_basenames(onnx_dir: Path) -> list[str]:
 
 def parse_quantized_model_filename(filepath: Path) -> tuple[str, str]:
     for quantization_type in QUANTIZATION_TYPES:
-        suffix = get_quantized_model_suffix(quantization_type)
+        suffix = "_" + get_quantized_model_suffix(quantization_type)
         if filepath.stem.endswith(suffix):
             return filepath.stem.replace(suffix, ""), quantization_type
     return filepath.stem, None

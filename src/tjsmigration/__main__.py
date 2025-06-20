@@ -191,6 +191,7 @@ def test(repo: str, path: list[str]):
 
             base_model_name, quantization_type = parse_quantized_model_filename(p)
 
+            logger.info(f"Running JS E2E test for {p}, quantized version of [{base_model_name}] with [{quantization_type}] mode...")
             if not run_js_e2e_test(task_name, temp_dir, base_model_name, quantization_type):
                 print(f"Failed to run JS E2E test for {p}")
             else:
