@@ -1,4 +1,5 @@
 import logging
+import contextlib
 import tempfile
 import shutil
 import subprocess
@@ -8,6 +9,8 @@ from dataclasses import dataclass
 
 import onnx
 from huggingface_hub import HfApi, ModelInfo
+
+from .task_type import infer_transformers_task_type
 
 
 logger = logging.getLogger(__name__)
@@ -52,12 +55,19 @@ def get_base_model_basenames(onnx_dir: Path) -> list[str]:
     for onnx_file in onnx_dir.glob("*.onnx"):
         basename = onnx_file.stem
         is_quantized = (
-            any(basename.endswith(f"_{quantization_type}") for quantization_type in QUANTIZATION_TYPES)
-            or basename.endswith("_quantized")
+            any(basename.endswith(f"_{get_quantized_model_suffix(quantization_type)}") for quantization_type in QUANTIZATION_TYPES)
         )
         if not is_quantized:
             base_models.append(onnx_file.stem)
     return base_models
+
+
+def parse_quantized_model_filename(filepath: Path) -> tuple[str, str]:
+    for quantization_type in QUANTIZATION_TYPES:
+        suffix = get_quantized_model_suffix(quantization_type)
+        if filepath.stem.endswith(suffix):
+            return filepath.stem.replace(suffix, ""), quantization_type
+    return filepath.stem, None
 
 
 def validate_onnx_model(abspath: Path) -> bool:
@@ -65,6 +75,53 @@ def validate_onnx_model(abspath: Path) -> bool:
         onnx.checker.check_model(str(abspath), full_check=True)
         return True
     except onnx.onnx_cpp2py_export.checker.ValidationError:
+        return False
+
+
+@contextlib.contextmanager
+def prepare_js_e2e_test_directory(
+    hf_api: HfApi,
+    original_repo_id: str,  # e.g. "onnx-community/whisper-tiny". Metadata files are needed for the model files to be loaded, so we need to copy them from the original repo.
+):
+    source_repo_path = hf_api.snapshot_download(repo_id=original_repo_id, repo_type="model")
+
+    # 1. Copy the original repo to a temporary directory
+    with tempfile.TemporaryDirectory() as root_temp_dir:
+        temp_dir = Path(root_temp_dir) / Path(source_repo_path).name
+        shutil.copytree(source_repo_path, temp_dir)
+
+        # 2. Merge the target files into the temporary directory
+        onnx_dir = temp_dir / "onnx"
+        def add_onnx_file(file_path: Path):
+            shutil.copy(file_path, onnx_dir / file_path.name)
+
+        yield temp_dir, add_onnx_file
+
+
+def run_js_e2e_test(
+        task_name: str,
+        model_dir: Path,  # e.g. /path/to/onnx-communty/whisper-tiny
+        model_base_name: str,  # e.g. decoder_model_merged
+        quantization_type: str  # e.g. fp16
+) -> bool:
+    js_code = f"""
+import {{ pipeline, env }} from '@huggingface/transformers';
+import path from 'node:path';
+
+env.allowLocalModels = true;
+env.allowRemoteModels = false;
+
+const model = await pipeline('{task_name}', '{model_dir.resolve()}', {{
+    dtype: {{
+        '{model_base_name}': '{quantization_type}'
+    }}
+}});
+"""
+
+    try:
+        subprocess.run(["node", "-e", js_code], cwd=TRANSFORMERS_JS_PATH, check=True)
+        return True
+    except subprocess.CalledProcessError:
         return False
 
 
@@ -113,7 +170,7 @@ class QuantizationResult:
         return all(result.success for result in self.models)
 
 
-def call_quantization_script(quantization_config: QuantizationConfig, output_dir: Path) -> QuantizationResult:
+def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_config: QuantizationConfig, output_dir: Path) -> QuantizationResult:
     with tempfile.TemporaryDirectory() as temp_input_dir:
         # Copy the base model file into the temp input directory with or without slimming by onnxslim
         base_model = quantization_config.base_model
@@ -147,20 +204,28 @@ def call_quantization_script(quantization_config: QuantizationConfig, output_dir
             logger.error(f"Error running quantization script: {e}")
             return QuantizationResult(config=quantization_config, models=[], error=e)
 
+        task_name = infer_transformers_task_type(model_info)
         # Validate the quantized model
-        results = []
-        for quantization in quantization_config.quantizations:
-            suffix = get_quantized_model_suffix(quantization.type)
-            quantized_model_path = output_dir / f"{base_model.stem}_{suffix}.onnx"
-            if not quantized_model_path.exists():
-                raise FileNotFoundError(f"Quantized model {quantized_model_path} not found")
+        with prepare_js_e2e_test_directory(hf_api, model_info.id) as (temp_dir, add_onnx_file):
+            results = []
+            for quantization in quantization_config.quantizations:
+                suffix = get_quantized_model_suffix(quantization.type)
+                quantized_model_path = output_dir / f"{base_model.stem}_{suffix}.onnx"
+                if not quantized_model_path.exists():
+                    raise FileNotFoundError(f"Quantized model {quantized_model_path} not found")
 
-            if validate_onnx_model(quantized_model_path):
-                results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=True))
-            else:
-                logger.warning(f"Quantized model {quantized_model_path} is invalid. Removing it...")
-                quantized_model_path.unlink()
-                results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=False))
+                if validate_onnx_model(quantized_model_path):
+                    add_onnx_file(quantized_model_path)
+                    if run_js_e2e_test(task_name, temp_dir, base_model.stem, quantization.type):
+                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=True))
+                    else:
+                        logger.warning(f"E2E test failed for {quantized_model_path}. Removing it...")
+                        quantized_model_path.unlink()
+                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=False))
+                else:
+                    logger.warning(f"Quantized model {quantized_model_path} is invalid. Removing it...")
+                    quantized_model_path.unlink()
+                    results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=False))
 
         return QuantizationResult(config=quantization_config, models=results, error=None)
 
@@ -201,11 +266,11 @@ def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path, 
     results = []
     for quantization_config in quantization_configs:
         quantization_config.slim = True
-        result = call_quantization_script(quantization_config, output_dir)
+        result = call_quantization_script(hf_api, model_info, quantization_config, output_dir)
         if result.error and fallback_to_no_slimming:
             logger.warning(f"Failed to quantize {quantization_config.base_model.stem} with slimming. Retrying without slimming...")
             quantization_config.slim = False
-            result = call_quantization_script(quantization_config, output_dir)
+            result = call_quantization_script(hf_api, model_info, quantization_config, output_dir)
         results.append(result)
 
     summary = create_summary_text(results)

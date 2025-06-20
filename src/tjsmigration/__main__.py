@@ -7,11 +7,17 @@ import click
 from huggingface_hub import HfApi
 from anthropic import Anthropic
 
-from .model_migration import migrate_model_files
+from .model_migration import migrate_model_files, parse_quantized_model_filename, prepare_js_e2e_test_directory, validate_onnx_model, run_js_e2e_test
 from .readme_migration import migrate_readme
 from .tempdir import temp_dir_if_none
+from .task_type import infer_transformers_task_type
 
 logger = logging.getLogger(__name__)
+
+
+@click.group()
+def cli():
+    pass
 
 
 def get_user_confirmation_to_upload(repo_id: str, files: list[Path], summary: str) -> bool:
@@ -26,7 +32,7 @@ def get_user_confirmation_to_upload(repo_id: str, files: list[Path], summary: st
     return click.confirm(text)
 
 
-def migrate(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir: str | None, upload: bool, only: list[str]):
+def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir: str | None, upload: bool, only: list[str]):
     logger.info(f"Migrating {repo_id}...")
     logger.info(f"Upload: {upload}")
     logger.info(f"Only: {only}")
@@ -79,12 +85,12 @@ def migrate(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir
         print(f"Pull request created: {commit_info.pr_url}")
 
 
-@click.command()
+@cli.command()
 @click.option("--repo", required=True, multiple=True)
 @click.option("--output-dir", required=False, type=click.Path(exists=False))
 @click.option("--upload", required=False, is_flag=True)
 @click.option("--only", required=False, multiple=True, type=click.Choice(["readme", "model"]), default=["readme", "model"])
-def cli(repo: list[str], output_dir: str | None, upload: bool, only: list[str]):
+def migrate(repo: list[str], output_dir: str | None, upload: bool, only: list[str]):
     token = os.getenv("HF_TOKEN")
     if not token:
         raise ValueError("HF_TOKEN is not set")
@@ -99,7 +105,53 @@ def cli(repo: list[str], output_dir: str | None, upload: bool, only: list[str]):
     logger.info(f"Migrating {repo}...")
 
     for repo_id in repo:
-        migrate(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir=output_dir, upload=upload, only=only)
+        migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir=output_dir, upload=upload, only=only)
+
+
+@cli.command()
+@click.argument("path", type=click.Path(exists=True))
+def check(path: str):
+    path = Path(path)
+    if not path.exists():
+        raise ValueError(f"Path {path} does not exist")
+    if not path.is_file():
+        raise ValueError(f"Path {path} is not a file")
+
+    if not validate_onnx_model(path):
+        raise ValueError(f"Path {path} is not a valid ONNX model")
+
+
+@cli.command()
+@click.option("--repo", required=True, help="The Hugging Face repo ID from which the model files are downloaded")
+@click.argument("path", type=click.Path(exists=True), nargs=-1)
+def test(repo: str, path: list[str]):
+    paths = [Path(p) for p in path]
+    for p in paths:
+        if not p.exists():
+            raise ValueError(f"Path {p} does not exist")
+        if not p.is_file():
+            raise ValueError(f"Path {p} is not a file")
+        if not p.suffix == ".onnx":
+            raise ValueError(f"Path {p} is not an ONNX model")
+
+    token = os.getenv("HF_TOKEN")
+    if not token:
+        raise ValueError("HF_TOKEN is not set")
+    hf_api = HfApi(token=token)
+
+    model_info = hf_api.repo_info(repo)
+    task_name = infer_transformers_task_type(model_info)
+
+    with prepare_js_e2e_test_directory(hf_api, repo) as (temp_dir, add_onnx_file):
+        for p in paths:
+            add_onnx_file(p)
+
+            base_model_name, quantization_type = parse_quantized_model_filename(p)
+
+            if not run_js_e2e_test(task_name, temp_dir, base_model_name, quantization_type):
+                print(f"Failed to run JS E2E test for {p}")
+            else:
+                print(f"Successfully ran JS E2E test for {p}")
 
 
 if __name__ == "__main__":
