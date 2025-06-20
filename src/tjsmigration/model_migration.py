@@ -106,7 +106,7 @@ def run_js_e2e_test(
         model_dir: Path,  # e.g. /path/to/onnx-communty/whisper-tiny
         model_base_name: str,  # e.g. decoder_model_merged
         quantization_type: str  # e.g. fp16
-) -> bool:
+) -> tuple[bool, str | None]:
     js_code = f"""
 import {{ pipeline, env }} from '@huggingface/transformers';
 import path from 'node:path';
@@ -122,10 +122,11 @@ const model = await pipeline('{task_name}', '{model_dir.resolve()}', {{
 """
 
     try:
-        subprocess.run(["node", "-e", js_code], cwd=ROOT, check=True)
-        return True
-    except subprocess.CalledProcessError:
-        return False
+        subprocess.run(["node", "-e", js_code], cwd=ROOT, check=True, capture_output=True, text=True)
+        return True, None
+    except subprocess.CalledProcessError as e:
+        error_message = e.stderr.strip() if e.stderr else str(e)
+        return False, error_message
 
 
 def get_quantization_config_for_base_model(onnx_dir: Path, base_model_basename: str) -> QuantizationConfig:
@@ -159,6 +160,7 @@ class QuantizedModelInfo:
     reason: Literal["missing", "invalid"]
     path: Path
     status: Literal["success", "onnx_check_failed", "js_e2e_test_failed"]
+    e2e_test_error_message: str | None
 
 
 @dataclass
@@ -221,18 +223,19 @@ def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_
                 if validate_onnx_model(quantized_model_path):
                     logger.info(f"{quantized_model_path.name}: ONNX check passed ✳️")
                     add_onnx_file(quantized_model_path)
-                    if run_js_e2e_test(task_name, temp_dir, base_model.stem, quantization.type):
+                    success, error_message = run_js_e2e_test(task_name, temp_dir, base_model.stem, quantization.type)
+                    if success:
                         logger.info(f"{quantized_model_path.name}: JS-based E2E test passed ✳️")
                         logger.info(f"Copying {quantized_model_path} to {output_dir / quantized_model_path.name}")
                         output_path = output_dir / quantized_model_path.name
                         shutil.copy(quantized_model_path, output_path)
-                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=output_path, status="success"))
+                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=output_path, status="success", e2e_test_error_message=None))
                     else:
                         logger.warning(f"{quantized_model_path.name}: JS-based E2E test failed ❌")
-                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="js_e2e_test_failed"))
+                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="js_e2e_test_failed", e2e_test_error_message=error_message))
                 else:
                     logger.warning(f"{quantized_model_path.name}: ONNX check failed ❌")
-                    results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="onnx_check_failed"))
+                    results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="onnx_check_failed", e2e_test_error_message=None))
 
         return QuantizationResult(config=quantization_config, models=results, error=None)
 
@@ -261,6 +264,8 @@ def create_summary_text(results: list[QuantizationResult]) -> str:
         summary += f"### {'✅' if result.success else '❌'} Based on `{result.config.base_model.name}` *{'with' if result.config.slim else 'without'}* slimming\n\n"
         for model_info in result.models:
             summary += f"↳ {'✅' if model_info.status == "success" else '❌'} `{model_info.mode}`: `{model_info.path.name}` ({create_reason_text(model_info.reason)}{" but " + create_failed_status_text(model_info.status) if model_info.status != "success" else ""})\n"
+            if model_info.status == "js_e2e_test_failed":
+                summary += f"```\n{model_info.e2e_test_error_message}\n```\n"
         summary += "\n"
     return summary
 
