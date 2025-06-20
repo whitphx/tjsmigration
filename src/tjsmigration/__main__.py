@@ -26,20 +26,22 @@ def migrate(repo_id: str, output_dir: str | None, upload: bool, only: list[str])
     if not anthropic_api_key:
         raise ValueError("ANTHROPIC_API_KEY is not set")
 
+    hf_api = HfApi(token=token)
+
+    repo_info = hf_api.repo_info(repo_id)
+
     logger.info(f"Migrating {repo_id}...")
     logger.info(f"Upload: {upload}")
     logger.info(f"Only: {only}")
 
     output_dir = Path(output_dir) if output_dir else None
 
-    hf_api = HfApi(token=token)
-
     anthropic_client = Anthropic(api_key=anthropic_api_key)
 
     if "model" in only:
-        migrate_model_files(hf_api=hf_api, repo_id=repo_id, output_dir=output_dir, upload=upload)
+        migrate_model_files(hf_api=hf_api, model_info=repo_info, output_dir=output_dir, upload=upload)
     if "readme" in only:
-        migrate_readme(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir=output_dir, upload=upload)
+        migrate_readme(hf_api=hf_api, anthropic_client=anthropic_client, model_info=repo_info, output_dir=output_dir, upload=upload)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

@@ -1,6 +1,6 @@
 # Copied from https://github.com/huggingface/optimum/blob/be76dde503d125b6a21cf1d3bec99e1185f86ba8/optimum/exporters/tasks.py#L1704
 
-from huggingface_hub.hf_api import ModelInfo
+from huggingface_hub import ModelInfo
 
 
 _SYNONYM_TASK_MAP = {

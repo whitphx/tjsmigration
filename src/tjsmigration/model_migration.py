@@ -7,7 +7,7 @@ from typing import Literal
 from dataclasses import dataclass
 
 import onnx
-from huggingface_hub import HfApi
+from huggingface_hub import HfApi, ModelInfo
 
 from .tempdir import temp_dir_if_none
 
@@ -140,7 +140,9 @@ def create_summary_text(results: list[QuantizationResult]) -> str:
     return summary
 
 
-def migrate_model_files(hf_api: HfApi, repo_id: str, output_dir: Path | None, upload: bool):
+def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path | None, upload: bool):
+    repo_id = model_info.id
+
     downloaded_path = hf_api.snapshot_download(repo_id=repo_id, repo_type="model")
 
     onnx_dir = Path(downloaded_path) / "onnx"

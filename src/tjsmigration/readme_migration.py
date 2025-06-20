@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
-from huggingface_hub import HfApi
+from huggingface_hub import HfApi, ModelInfo
 from anthropic import Anthropic
 
 logger = logging.getLogger(__name__)
@@ -233,15 +233,16 @@ def update_readme_content(anthropic_client: Anthropic, orig_content: str, task_t
             raise KeyboardInterrupt
 
 
-def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir: Path | None, upload: bool):
+def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, model_info: ModelInfo, output_dir: Path | None, upload: bool):
+    repo_id = model_info.id
+
     downloaded_path = hf_api.snapshot_download(repo_id=repo_id, repo_type="model")
     readme_path = Path(downloaded_path) / "README.md"
 
     with readme_path.open("r") as f:
         orig_readme_content = f.read()
 
-    repo_info = hf_api.repo_info(repo_id)
-    task_type = infer_transformers_task_type(repo_info)
+    task_type = infer_transformers_task_type(model_info=model_info)
 
     new_readme_content = update_readme_content(anthropic_client, orig_readme_content, task_type, repo_id)
 
