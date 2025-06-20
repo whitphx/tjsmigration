@@ -158,7 +158,7 @@ class QuantizedModelInfo:
     mode: str
     reason: Literal["missing", "invalid"]
     path: Path
-    success: bool
+    status: Literal["success", "onnx_check_failed", "js_e2e_test_failed"]
 
 
 @dataclass
@@ -170,7 +170,7 @@ class QuantizationResult:
     def success(self) -> bool:
         if self.error:
             return False
-        return all(result.success for result in self.models)
+        return all(result.status == "success" for result in self.models)
 
 
 def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_config: QuantizationConfig, output_dir: Path) -> QuantizationResult:
@@ -223,17 +223,17 @@ def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_
                     add_onnx_file(quantized_model_path)
                     if run_js_e2e_test(task_name, temp_dir, base_model.stem, quantization.type):
                         logger.info(f"{quantized_model_path.name}: JS-based E2E test passed ✳️")
-                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=True))
+                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="success"))
                     else:
                         logger.warning(f"{quantized_model_path.name}: JS-based E2E test failed ❌")
                         logger.warning(f"Removing {quantized_model_path}...")
                         quantized_model_path.unlink()
-                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=False))
+                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="js_e2e_test_failed"))
                 else:
                     logger.warning(f"{quantized_model_path.name}: ONNX check failed ❌")
                     logger.warning(f"Removing {quantized_model_path}...")
                     quantized_model_path.unlink()
-                    results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=False))
+                    results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="onnx_check_failed"))
 
         return QuantizationResult(config=quantization_config, models=results, error=None)
 
@@ -247,12 +247,21 @@ def create_reason_text(reason: Literal["missing", "invalid"]) -> str:
         return ""
 
 
+def create_failed_status_text(status: Literal["onnx_check_failed", "js_e2e_test_failed"]) -> str:
+    if status == "onnx_check_failed":
+        return "ONNX check failed"
+    elif status == "js_e2e_test_failed":
+        return "JS-based E2E test failed"
+    else:
+        return ""
+
+
 def create_summary_text(results: list[QuantizationResult]) -> str:
     summary = "## Applied Quantizations\n\n"
     for result in results:
         summary += f"### {'✅' if result.success else '❌'} Based on `{result.config.base_model.name}` *{'with' if result.config.slim else 'without'}* slimming\n\n"
         for model_info in result.models:
-            summary += f"↳ {'✅' if model_info.success else '❌'} `{model_info.mode}`: `{model_info.path.name}` ({create_reason_text(model_info.reason)})\n"
+            summary += f"↳ {'✅' if model_info.status == "success" else '❌'} `{model_info.mode}`: `{model_info.path.name}` ({create_reason_text(model_info.reason)}{" but " + create_failed_status_text(model_info.status) if model_info.status != "success" else ""})\n"
         summary += "\n"
     return summary
 
