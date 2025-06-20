@@ -60,6 +60,14 @@ def get_base_model_basenames(onnx_dir: Path) -> list[str]:
     return base_models
 
 
+def validate_onnx_model(abspath: Path) -> bool:
+    try:
+        onnx.checker.check_model(str(abspath), full_check=True)
+        return True
+    except onnx.onnx_cpp2py_export.checker.ValidationError:
+        return False
+
+
 def get_quantization_config_for_base_model(onnx_dir: Path, base_model_basename: str) -> QuantizationConfig:
     base_model_path = onnx_dir / f"{base_model_basename}.onnx"
     if not base_model_path.exists():
@@ -70,9 +78,7 @@ def get_quantization_config_for_base_model(onnx_dir: Path, base_model_basename: 
         suffix = get_quantized_model_suffix(quantization_type)
         quantized_model_path = onnx_dir / f"{base_model_basename}_{suffix}.onnx"
         if quantized_model_path.exists():
-            try:
-                onnx.checker.check_model(str(quantized_model_path), full_check=True)
-            except onnx.onnx_cpp2py_export.checker.ValidationError:
+            if not validate_onnx_model(quantized_model_path):
                 quantizations.append(RequiredQuantization(type=quantization_type, reason="invalid"))
         else:
             quantizations.append(RequiredQuantization(type=quantization_type, reason="missing"))
@@ -88,14 +94,28 @@ def get_quantization_configs(onnx_dir: Path) -> list[QuantizationConfig]:
 
 
 @dataclass
-class QuantizationResult:
+class QuantizedModelInfo:
+    mode: str
+    reason: Literal["missing", "invalid"]
+    path: Path
     success: bool
+
+
+@dataclass
+class QuantizationResult:
     config: QuantizationConfig
+    error: Exception | None
+    models: list[QuantizedModelInfo]
+
+    def success(self) -> bool:
+        if self.error:
+            return False
+        return all(result.success for result in self.models)
 
 
 def call_quantization_script(quantization_config: QuantizationConfig, output_dir: Path) -> QuantizationResult:
     with tempfile.TemporaryDirectory() as temp_input_dir:
-        # copy the base model file into the temp input directory
+        # Copy the base model file into the temp input directory with or without slimming by onnxslim
         base_model = quantization_config.base_model
         temp_source_file = Path(temp_input_dir) / base_model.name
         if quantization_config.slim:
@@ -110,8 +130,8 @@ def call_quantization_script(quantization_config: QuantizationConfig, output_dir
             logger.info(f"Copying {base_model} to {temp_source_file}")
             shutil.copy(base_model, temp_source_file)
 
+        # Run the quantization script
         modes = [quantization.type for quantization in quantization_config.quantizations]
-
         cmd = [
             "uv", "run",
             "--with-requirements", "scripts/requirements.txt",
@@ -120,15 +140,29 @@ def call_quantization_script(quantization_config: QuantizationConfig, output_dir
             "--output_folder", str(output_dir.resolve()),
             "--modes", *modes,
         ]
-
         logger.info(f"Running command: {cmd}")
         try:
             subprocess.run(cmd, cwd=TRANSFORMERS_JS_PATH, check=True)
-            return QuantizationResult(success=True, config=quantization_config)
         except subprocess.CalledProcessError as e:
             logger.error(f"Error running quantization script: {e}")
-            return QuantizationResult(success=False, config=quantization_config)
+            return QuantizationResult(config=quantization_config, models=[], error=e)
 
+        # Validate the quantized model
+        results = []
+        for quantization in quantization_config.quantizations:
+            suffix = get_quantized_model_suffix(quantization.type)
+            quantized_model_path = output_dir / f"{base_model.stem}_{suffix}.onnx"
+            if not quantized_model_path.exists():
+                raise FileNotFoundError(f"Quantized model {quantized_model_path} not found")
+
+            if validate_onnx_model(quantized_model_path):
+                results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=True))
+            else:
+                logger.warning(f"Quantized model {quantized_model_path} is invalid. Removing it...")
+                quantized_model_path.unlink()
+                results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=False))
+
+        return QuantizationResult(config=quantization_config, models=results, error=None)
 
 
 def create_reason_text(reason: Literal["missing", "invalid"]) -> str:
@@ -141,16 +175,12 @@ def create_reason_text(reason: Literal["missing", "invalid"]) -> str:
 
 
 def create_summary_text(results: list[QuantizationResult]) -> str:
-    summary = "## Applied Quantizations\n"
+    summary = "## Applied Quantizations\n\n"
     for result in results:
-        summary += f"### {'✅' if result.success else '❌'} Based on `{result.config.base_model.stem}.onnx` *{'with' if result.config.slim else 'without'}* slimming\n"
-        if result.success:
-            for quantization in result.config.quantizations:
-                summary += f"↳ `{quantization.type}` ({create_reason_text(quantization.reason)})\n"
-        else:
-            summary += f"__Failed to quantize.__ The following quantizations were expected but failed:\n"
-            for quantization in result.config.quantizations:
-                summary += f"- `{quantization.type}` ({create_reason_text(quantization.reason)})\n"
+        summary += f"### {'✅' if result.success else '❌'} Based on `{result.config.base_model.name}` *{'with' if result.config.slim else 'without'}* slimming\n\n"
+        for model_info in result.models:
+            summary += f"↳ {'✅' if model_info.success else '❌'} `{model_info.mode}`: `{model_info.path.name}` ({create_reason_text(model_info.reason)})\n"
+        summary += "\n"
     return summary
 
 
@@ -172,7 +202,7 @@ def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path, 
     for quantization_config in quantization_configs:
         quantization_config.slim = True
         result = call_quantization_script(quantization_config, output_dir)
-        if not result.success and fallback_to_no_slimming:
+        if result.error and fallback_to_no_slimming:
             logger.warning(f"Failed to quantize {quantization_config.base_model.stem} with slimming. Retrying without slimming...")
             quantization_config.slim = False
             result = call_quantization_script(quantization_config, output_dir)
