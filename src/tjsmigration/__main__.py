@@ -14,6 +14,18 @@ from .tempdir import temp_dir_if_none
 logger = logging.getLogger(__name__)
 
 
+def get_user_confirmation_to_upload(repo_id: str, files: list[Path], summary: str) -> bool:
+    text = ""
+    text += f"=== Upload Confirmation ===\n"
+    text += f"Repo ID: {repo_id}\n"
+    text += f"Generated files:\n{'\n'.join([' - ' + str(p) for p in files])}\n"
+    text += "\n-- Summary --\n"
+    text += summary + "\n"
+    text += "\n-- End of Summary --\n"
+    text += "\n\nDo you want to upload the files to the Hugging Face Hub?"
+    return click.confirm(text)
+
+
 @click.command()
 @click.option("--repo-id", required=True)
 @click.option("--output-dir", required=False, type=click.Path(exists=False))
@@ -66,6 +78,10 @@ def migrate(repo_id: str, output_dir: str | None, upload: bool, only: list[str])
             logger.info("Skipping upload")
             return
 
+        if not get_user_confirmation_to_upload(repo_id, files, summary):
+            logger.info("Upload cancelled by user")
+            return
+
         logger.info(f"Uploading quantized models to {repo_id}...")
         commit_info = hf_api.upload_folder(
             repo_id=repo_id,
@@ -75,7 +91,9 @@ def migrate(repo_id: str, output_dir: str | None, upload: bool, only: list[str])
             commit_description=summary,
             create_pr=True,
         )
-        logger.info(f"Uploaded quantized models to the Hugging Face Hub: {commit_info}")
+        logger.info(f"Uploaded files to the Hugging Face Hub")
+
+        print(f"Pull request created: {commit_info.pr_url}")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

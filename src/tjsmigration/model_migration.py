@@ -134,7 +134,6 @@ def create_summary_text(results: list[QuantizationResult]) -> str:
         summary += f"### {'✅' if result.success else '❌'} Based on `{result.config.base_model.stem}.onnx`\n"
         for quantization in result.config.quantizations:
             summary += f"↳ `{quantization.type}` ({create_reason_text(quantization.reason)})\n"
-        summary += "\n"
     return summary
 
 
