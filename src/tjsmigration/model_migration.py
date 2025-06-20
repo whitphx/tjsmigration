@@ -209,6 +209,7 @@ def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_
 
         task_name = infer_transformers_task_type(model_info)
         # Validate the quantized model
+        logger.info("Validating quantized models...")
         with prepare_js_e2e_test_directory(hf_api, model_info.id) as (temp_dir, add_onnx_file):
             results = []
             for quantization in quantization_config.quantizations:
@@ -218,15 +219,19 @@ def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_
                     raise FileNotFoundError(f"Quantized model {quantized_model_path} not found")
 
                 if validate_onnx_model(quantized_model_path):
+                    logger.info(f"{quantized_model_path.name}: ONNX check passed ✳️")
                     add_onnx_file(quantized_model_path)
                     if run_js_e2e_test(task_name, temp_dir, base_model.stem, quantization.type):
+                        logger.info(f"{quantized_model_path.name}: JS-based E2E test passed ✳️")
                         results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=True))
                     else:
-                        logger.warning(f"E2E test failed for {quantized_model_path}. Removing it...")
+                        logger.warning(f"{quantized_model_path.name}: JS-based E2E test failed ❌")
+                        logger.warning(f"Removing {quantized_model_path}...")
                         quantized_model_path.unlink()
                         results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=False))
                 else:
-                    logger.warning(f"Quantized model {quantized_model_path} is invalid. Removing it...")
+                    logger.warning(f"{quantized_model_path.name}: ONNX check failed ❌")
+                    logger.warning(f"Removing {quantized_model_path}...")
                     quantized_model_path.unlink()
                     results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, success=False))
 
