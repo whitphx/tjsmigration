@@ -140,7 +140,7 @@ def create_summary_text(results: list[QuantizationResult]) -> str:
     return summary
 
 
-def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path | None, upload: bool):
+def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path, upload: bool):
     repo_id = model_info.id
 
     downloaded_path = hf_api.snapshot_download(repo_id=repo_id, repo_type="model")
@@ -148,36 +148,35 @@ def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path |
     onnx_dir = Path(downloaded_path) / "onnx"
     quantization_configs = get_quantization_configs(onnx_dir)
 
+    file_exists = len(list(output_dir.glob("*.onnx"))) > 0
+    if file_exists:
+        raise ValueError("Output directory already contains some files. Abort.")
+
+    logger.info("Quantizing models...")
+    logger.info(f"Quantization configs: {quantization_configs}")
     results = []
-    with temp_dir_if_none(output_dir) as output_dir:
-        file_exists = len(list(output_dir.glob("*.onnx"))) > 0
-        if file_exists:
-            raise ValueError("Output directory already contains some files. Abort.")
+    for quantization_config in quantization_configs:
+        result = call_quantization_script(quantization_config, output_dir)
+        results.append(result)
 
-        logger.info("Quantizing models...")
-        logger.info(f"Quantization configs: {quantization_configs}")
-        for quantization_config in quantization_configs:
-            result = call_quantization_script(quantization_config, output_dir)
-            results.append(result)
+    summary = create_summary_text(results)
+    logger.info(summary)
 
-        summary = create_summary_text(results)
-        logger.info(summary)
+    new_file_exists = len(list(output_dir.glob("*.onnx"))) > 0
 
-        new_file_exists = len(list(output_dir.glob("*.onnx"))) > 0
-
-        if upload:
-            if new_file_exists:
-                logger.info(f"Uploading quantized models to {repo_id}...")
-                commit_info = hf_api.upload_folder(
-                    repo_id=repo_id,
-                    folder_path=output_dir,
-                    path_in_repo="onnx",
-                    repo_type="model",
-                    commit_message="Add quantized ONNX model files",
-                    create_pr=True,
-                )
-                logger.info(f"Uploaded quantized models to the Hugging Face Hub: {commit_info}")
-            else:
-                logger.warning("No quantized models were created")
+    if upload:
+        if new_file_exists:
+            logger.info(f"Uploading quantized models to {repo_id}...")
+            commit_info = hf_api.upload_folder(
+                repo_id=repo_id,
+                folder_path=output_dir,
+                path_in_repo="onnx",
+                repo_type="model",
+                commit_message="Add quantized ONNX model files",
+                create_pr=True,
+            )
+            logger.info(f"Uploaded quantized models to the Hugging Face Hub: {commit_info}")
         else:
-            logger.info("Skipping upload")
+            logger.warning("No quantized models were created")
+    else:
+        logger.info("Skipping upload")

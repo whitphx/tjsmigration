@@ -8,6 +8,7 @@ from anthropic import Anthropic
 
 from .model_migration import migrate_model_files
 from .readme_migration import migrate_readme
+from .tempdir import temp_dir_if_none
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +39,12 @@ def migrate(repo_id: str, output_dir: str | None, upload: bool, only: list[str])
 
     anthropic_client = Anthropic(api_key=anthropic_api_key)
 
-    if "model" in only:
-        migrate_model_files(hf_api=hf_api, model_info=repo_info, output_dir=output_dir, upload=upload)
-    if "readme" in only:
-        migrate_readme(hf_api=hf_api, anthropic_client=anthropic_client, model_info=repo_info, output_dir=output_dir, upload=upload)
+    with temp_dir_if_none(output_dir) as output_dir:
+        repo_output_dir = output_dir / repo_info.id
+        if "model" in only:
+            migrate_model_files(hf_api=hf_api, model_info=repo_info, output_dir=repo_output_dir, upload=upload)
+        if "readme" in only:
+            migrate_readme(hf_api=hf_api, anthropic_client=anthropic_client, model_info=repo_info, output_dir=repo_output_dir, upload=upload)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

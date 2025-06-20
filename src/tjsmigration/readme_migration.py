@@ -233,7 +233,7 @@ def update_readme_content(anthropic_client: Anthropic, orig_content: str, task_t
             raise KeyboardInterrupt
 
 
-def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, model_info: ModelInfo, output_dir: Path | None, upload: bool):
+def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, model_info: ModelInfo, output_dir: Path, upload: bool):
     repo_id = model_info.id
 
     downloaded_path = hf_api.snapshot_download(repo_id=repo_id, repo_type="model")
@@ -246,21 +246,20 @@ def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, model_info: Model
 
     new_readme_content = update_readme_content(anthropic_client, orig_readme_content, task_type, repo_id)
 
-    with temp_dir_if_none(output_dir) as output_dir:
-        output_readme_path = output_dir / "README.md"
-        with output_readme_path.open("w") as f:
-            f.write(new_readme_content)
+    output_readme_path = output_dir / "README.md"
+    with output_readme_path.open("w") as f:
+        f.write(new_readme_content)
 
-        if upload:
-            logger.info(f"Uploading README.md to {repo_id}...")
-            hf_api.upload_file(
-                path_or_fileobj=output_readme_path,
-                path_in_repo="README.md",
-                repo_id=repo_id,
-                repo_type="model",
-                commit_message="Update README.md for Transformers.js v3",
-                create_pr=True,
-            )
-            logger.info(f"Uploaded README.md to {repo_id}")
-        else:
-            logger.info("Skipping upload")
+    if upload:
+        logger.info(f"Uploading README.md to {repo_id}...")
+        hf_api.upload_file(
+            path_or_fileobj=output_readme_path,
+            path_in_repo="README.md",
+            repo_id=repo_id,
+            repo_type="model",
+            commit_message="Update README.md for Transformers.js v3",
+            create_pr=True,
+        )
+        logger.info(f"Uploaded README.md to {repo_id}")
+    else:
+        logger.info("Skipping upload")
