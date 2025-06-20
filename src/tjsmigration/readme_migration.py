@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+import click
 from huggingface_hub import HfApi, ModelInfo
 from anthropic import Anthropic
 
@@ -79,7 +80,10 @@ def get_user_confirmation_and_edit(content: str, existing_instructions: list[str
         print("  [r] Regenerate (return to regeneration)")
         print("  [q] Quit without saving")
 
-        choice = input("\nWhat would you like to do? [y/e/r/q]: ").lower().strip()
+        choice = click.prompt(
+            "What would you like to do? [y/e/r/q]: ",
+            type=click.Choice(['y', 'e', 'r', 'q']),
+        )
 
         if choice == 'y':
             return UserResponse(action=UserAction.ACCEPT)
