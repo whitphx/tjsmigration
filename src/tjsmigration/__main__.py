@@ -37,28 +37,38 @@ def get_user_confirmation_to_upload(repo_id: str, files: list[Path], summary: st
     return click.confirm(text)
 
 
-def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir: str | None, upload: bool, only: list[str], result_file_path: Path | None):
+def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir_path: str | None, working_dir_path: str | None, upload: bool, only: list[str], result_file_path: Path | None):
     logger.info(f"Migrating {repo_id}...")
     logger.info(f"Upload: {upload}")
     logger.info(f"Only: {only}")
 
     repo_info = hf_api.repo_info(repo_id)
 
-    output_dir = Path(output_dir) if output_dir else None
+    output_dir = Path(output_dir_path) if output_dir_path else None
+    working_dir = Path(working_dir_path) if working_dir_path else None
 
-    with temp_dir_if_none(output_dir) as output_dir:
+    with temp_dir_if_none(output_dir) as output_dir, temp_dir_if_none(working_dir) as working_dir:
         repo_output_dir: Path = output_dir / repo_info.id
         if repo_output_dir.exists():
             logger.warning(f"Output directory {repo_output_dir} already exists. This script will overwrite it.")
             shutil.rmtree(repo_output_dir)
         repo_output_dir.mkdir(parents=True, exist_ok=True)
 
+        repo_working_dir = working_dir / repo_info.id
+        if repo_working_dir.exists():
+            logger.warning(f"Working directory {repo_working_dir} already exists. This script will overwrite it.")
+            shutil.rmtree(repo_working_dir)
+        repo_working_dir.mkdir(parents=True, exist_ok=True)
+
         repo_onnx_output_dir = repo_output_dir / "onnx"
+        repo_onnx_working_dir = repo_working_dir / "onnx"
 
         if "readme" in only:
             migrate_readme(hf_api=hf_api, anthropic_client=anthropic_client, model_info=repo_info, output_dir=repo_output_dir)
         if "model" in only:
-            summary = migrate_model_files(hf_api=hf_api, model_info=repo_info, output_dir=repo_onnx_output_dir)
+            repo_onnx_working_dir.mkdir(parents=True, exist_ok=True)
+            repo_onnx_output_dir.mkdir(parents=True, exist_ok=True)
+            summary = migrate_model_files(hf_api=hf_api, model_info=repo_info, working_dir=repo_onnx_working_dir, output_dir=repo_onnx_output_dir)
 
         logger.info(summary)
 
@@ -106,9 +116,10 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
 @click.option("--model-name", required=False, type=str)
 @click.option("--filter", required=False, multiple=True, type=str)
 @click.option("--output-dir", required=False, type=click.Path(exists=False))
+@click.option("--working-dir", required=False, type=click.Path(exists=False))
 @click.option("--upload", required=False, is_flag=True)
 @click.option("--only", required=False, multiple=True, type=click.Choice(["readme", "model"]), default=["readme", "model"])
-def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter: tuple[str], output_dir: str | None, upload: bool, only: list[str]):
+def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter: tuple[str], output_dir: str | None, working_dir: str | None, upload: bool, only: list[str]):
     token = os.getenv("HF_TOKEN")
     if not token:
         raise ValueError("HF_TOKEN is not set")
@@ -137,7 +148,7 @@ def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter
     result_file_path = ROOT / f"result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
 
     for repo_id in repo:
-        migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir=output_dir, upload=upload, only=only, result_file_path=result_file_path)
+        migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir_path=output_dir, working_dir_path=working_dir, upload=upload, only=only, result_file_path=result_file_path)
 
 
 @cli.command()

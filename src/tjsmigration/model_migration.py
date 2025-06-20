@@ -173,7 +173,7 @@ class QuantizationResult:
         return all(result.status == "success" for result in self.models)
 
 
-def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_config: QuantizationConfig, output_dir: Path) -> QuantizationResult:
+def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_config: QuantizationConfig, working_dir: Path, output_dir: Path) -> QuantizationResult:
     with tempfile.TemporaryDirectory() as temp_input_dir:
         # Copy the base model file into the temp input directory with or without slimming by onnxslim
         base_model = quantization_config.base_model
@@ -197,7 +197,7 @@ def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_
             "--with-requirements", "scripts/requirements.txt",
             "python", "-m", "scripts.quantize",
             "--input_folder", temp_input_dir,
-            "--output_folder", str(output_dir.resolve()),
+            "--output_folder", str(working_dir.resolve()),
             "--modes", *modes,
         ]
         logger.info(f"Running command: {cmd}")
@@ -214,7 +214,7 @@ def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_
             results = []
             for quantization in quantization_config.quantizations:
                 suffix = get_quantized_model_suffix(quantization.type)
-                quantized_model_path = output_dir / f"{base_model.stem}_{suffix}.onnx"
+                quantized_model_path = working_dir / f"{base_model.stem}_{suffix}.onnx"
                 if not quantized_model_path.exists():
                     raise FileNotFoundError(f"Quantized model {quantized_model_path} not found")
 
@@ -223,16 +223,15 @@ def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_
                     add_onnx_file(quantized_model_path)
                     if run_js_e2e_test(task_name, temp_dir, base_model.stem, quantization.type):
                         logger.info(f"{quantized_model_path.name}: JS-based E2E test passed ✳️")
-                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="success"))
+                        logger.info(f"Copying {quantized_model_path} to {output_dir / quantized_model_path.name}")
+                        output_path = output_dir / quantized_model_path.name
+                        shutil.copy(quantized_model_path, output_path)
+                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=output_path, status="success"))
                     else:
                         logger.warning(f"{quantized_model_path.name}: JS-based E2E test failed ❌")
-                        logger.warning(f"Removing {quantized_model_path}...")
-                        quantized_model_path.unlink()
                         results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="js_e2e_test_failed"))
                 else:
                     logger.warning(f"{quantized_model_path.name}: ONNX check failed ❌")
-                    logger.warning(f"Removing {quantized_model_path}...")
-                    quantized_model_path.unlink()
                     results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="onnx_check_failed"))
 
         return QuantizationResult(config=quantization_config, models=results, error=None)
@@ -266,28 +265,29 @@ def create_summary_text(results: list[QuantizationResult]) -> str:
     return summary
 
 
-def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path, fallback_to_no_slimming: bool = True) -> str:
+def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, working_dir: Path, output_dir: Path, fallback_to_no_slimming: bool = True) -> str:
     repo_id = model_info.id
 
     downloaded_path = hf_api.snapshot_download(repo_id=repo_id, repo_type="model")
 
-    onnx_dir = Path(downloaded_path) / "onnx"
-    quantization_configs = get_quantization_configs(onnx_dir)
+    src_onnx_dir = Path(downloaded_path) / "onnx"
+    quantization_configs = get_quantization_configs(src_onnx_dir)
 
-    file_exists = len(list(output_dir.glob("*.onnx"))) > 0
-    if file_exists:
+    if len(list(output_dir.glob("*.onnx"))) > 0:
         raise ValueError("Output directory already contains some files. Abort.")
+    if len(list(working_dir.glob("*.onnx"))) > 0:
+        raise ValueError("Working directory already contains some files. Abort.")
 
     logger.info("Quantizing models...")
     logger.info(f"Quantization configs: {quantization_configs}")
     results = []
     for quantization_config in quantization_configs:
         quantization_config.slim = True
-        result = call_quantization_script(hf_api, model_info, quantization_config, output_dir)
+        result = call_quantization_script(hf_api=hf_api, model_info=model_info, quantization_config=quantization_config, working_dir=working_dir, output_dir=output_dir)
         if result.error and fallback_to_no_slimming:
             logger.warning(f"Failed to quantize {quantization_config.base_model.stem} with slimming. Retrying without slimming...")
             quantization_config.slim = False
-            result = call_quantization_script(hf_api, model_info, quantization_config, output_dir)
+            result = call_quantization_script(hf_api=hf_api, model_info=model_info, quantization_config=quantization_config, working_dir=working_dir, output_dir=output_dir)
         results.append(result)
 
     summary = create_summary_text(results)
