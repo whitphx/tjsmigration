@@ -15,6 +15,9 @@ from .task_type import infer_transformers_task_type
 
 logger = logging.getLogger(__name__)
 
+HERE = Path(__file__).parent
+ROOT = HERE.parent
+
 
 QUANTIZATION_TYPES = [
     "fp16",
@@ -119,7 +122,7 @@ const model = await pipeline('{task_name}', '{model_dir.resolve()}', {{
 """
 
     try:
-        subprocess.run(["node", "-e", js_code], cwd=TRANSFORMERS_JS_PATH, check=True)
+        subprocess.run(["node", "-e", js_code], cwd=ROOT, check=True)
         return True
     except subprocess.CalledProcessError:
         return False
