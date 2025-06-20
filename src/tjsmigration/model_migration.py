@@ -43,6 +43,7 @@ class RequiredQuantization:
 @dataclass
 class QuantizationConfig:
     base_model: Path
+    slim: bool
     quantizations: list[RequiredQuantization]
 
 
@@ -75,7 +76,7 @@ def get_quantization_config_for_base_model(onnx_dir: Path, base_model_basename: 
                 quantizations.append(RequiredQuantization(type=quantization_type, reason="invalid"))
         else:
             quantizations.append(RequiredQuantization(type=quantization_type, reason="missing"))
-    return QuantizationConfig(base_model=base_model_path, quantizations=quantizations)
+    return QuantizationConfig(base_model=base_model_path, slim=True, quantizations=quantizations)
 
 
 def get_quantization_configs(onnx_dir: Path) -> list[QuantizationConfig]:
@@ -96,7 +97,18 @@ def call_quantization_script(quantization_config: QuantizationConfig, output_dir
     with tempfile.TemporaryDirectory() as temp_input_dir:
         # copy the base model file into the temp input directory
         base_model = quantization_config.base_model
-        shutil.copy(base_model, temp_input_dir)
+        temp_source_file = Path(temp_input_dir) / base_model.name
+        if quantization_config.slim:
+            logger.info(f"Slimming {base_model} to {temp_source_file}")
+            cmd = [
+                "uv", "run",
+                "--with-requirements", "scripts/requirements.txt",
+                "onnxslim", str(base_model), str(temp_source_file)
+            ]
+            subprocess.run(cmd, cwd=TRANSFORMERS_JS_PATH, check=True)
+        else:
+            logger.info(f"Copying {base_model} to {temp_source_file}")
+            shutil.copy(base_model, temp_source_file)
 
         modes = [quantization.type for quantization in quantization_config.quantizations]
 
@@ -111,7 +123,7 @@ def call_quantization_script(quantization_config: QuantizationConfig, output_dir
 
         logger.info(f"Running command: {cmd}")
         try:
-            subprocess.run(cmd, cwd=TRANSFORMERS_JS_PATH)
+            subprocess.run(cmd, cwd=TRANSFORMERS_JS_PATH, check=True)
             return QuantizationResult(success=True, config=quantization_config)
         except subprocess.CalledProcessError as e:
             logger.error(f"Error running quantization script: {e}")
@@ -131,13 +143,18 @@ def create_reason_text(reason: Literal["missing", "invalid"]) -> str:
 def create_summary_text(results: list[QuantizationResult]) -> str:
     summary = "## Applied Quantizations\n"
     for result in results:
-        summary += f"### {'✅' if result.success else '❌'} Based on `{result.config.base_model.stem}.onnx`\n"
-        for quantization in result.config.quantizations:
-            summary += f"↳ `{quantization.type}` ({create_reason_text(quantization.reason)})\n"
+        summary += f"### {'✅' if result.success else '❌'} Based on `{result.config.base_model.stem}.onnx` *{'with' if result.config.slim else 'without'}* slimming\n"
+        if result.success:
+            for quantization in result.config.quantizations:
+                summary += f"↳ `{quantization.type}` ({create_reason_text(quantization.reason)})\n"
+        else:
+            summary += f"__Failed to quantize.__ The following quantizations were expected but failed:\n"
+            for quantization in result.config.quantizations:
+                summary += f"- `{quantization.type}` ({create_reason_text(quantization.reason)})\n"
     return summary
 
 
-def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path) -> str:
+def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path, fallback_to_no_slimming: bool = True) -> str:
     repo_id = model_info.id
 
     downloaded_path = hf_api.snapshot_download(repo_id=repo_id, repo_type="model")
@@ -153,7 +170,12 @@ def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path) 
     logger.info(f"Quantization configs: {quantization_configs}")
     results = []
     for quantization_config in quantization_configs:
+        quantization_config.slim = True
         result = call_quantization_script(quantization_config, output_dir)
+        if not result.success and fallback_to_no_slimming:
+            logger.warning(f"Failed to quantize {quantization_config.base_model.stem} with slimming. Retrying without slimming...")
+            quantization_config.slim = False
+            result = call_quantization_script(quantization_config, output_dir)
         results.append(result)
 
     summary = create_summary_text(results)
