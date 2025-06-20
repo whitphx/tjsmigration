@@ -26,31 +26,14 @@ def get_user_confirmation_to_upload(repo_id: str, files: list[Path], summary: st
     return click.confirm(text)
 
 
-@click.command()
-@click.option("--repo-id", required=True)
-@click.option("--output-dir", required=False, type=click.Path(exists=False))
-@click.option("--upload", required=False, is_flag=True)
-@click.option("--only", required=False, multiple=True, type=click.Choice(["readme", "model"]), default=["readme", "model"])
-def migrate(repo_id: str, output_dir: str | None, upload: bool, only: list[str]):
-    token = os.getenv("HF_TOKEN")
-    if not token:
-        raise ValueError("HF_TOKEN is not set")
-
-    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not anthropic_api_key:
-        raise ValueError("ANTHROPIC_API_KEY is not set")
-
-    hf_api = HfApi(token=token)
-
-    repo_info = hf_api.repo_info(repo_id)
-
+def migrate(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir: str | None, upload: bool, only: list[str]):
     logger.info(f"Migrating {repo_id}...")
     logger.info(f"Upload: {upload}")
     logger.info(f"Only: {only}")
 
-    output_dir = Path(output_dir) if output_dir else None
+    repo_info = hf_api.repo_info(repo_id)
 
-    anthropic_client = Anthropic(api_key=anthropic_api_key)
+    output_dir = Path(output_dir) if output_dir else None
 
     with temp_dir_if_none(output_dir) as output_dir:
         repo_output_dir: Path = output_dir / repo_info.id
@@ -95,7 +78,31 @@ def migrate(repo_id: str, output_dir: str | None, upload: bool, only: list[str])
 
         print(f"Pull request created: {commit_info.pr_url}")
 
+
+@click.command()
+@click.option("--repo", required=True, multiple=True)
+@click.option("--output-dir", required=False, type=click.Path(exists=False))
+@click.option("--upload", required=False, is_flag=True)
+@click.option("--only", required=False, multiple=True, type=click.Choice(["readme", "model"]), default=["readme", "model"])
+def cli(repo: list[str], output_dir: str | None, upload: bool, only: list[str]):
+    token = os.getenv("HF_TOKEN")
+    if not token:
+        raise ValueError("HF_TOKEN is not set")
+
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY is not set")
+
+    hf_api = HfApi(token=token)
+    anthropic_client = Anthropic(api_key=anthropic_api_key)
+
+    logger.info(f"Migrating {repo}...")
+
+    for repo_id in repo:
+        migrate(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir=output_dir, upload=upload, only=only)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    migrate()
+    cli()

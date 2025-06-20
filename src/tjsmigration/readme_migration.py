@@ -168,7 +168,9 @@ Add or update a basic usage example based on the model type. Use the repository 
 import {{ pipeline }} from '@huggingface/transformers';
 
 // Create the pipeline
-const pipe = await pipeline('{task_type}', '{repo_id}');
+const pipe = await pipeline('{task_type}', '{repo_id}', {{
+    dtype: 'fp32',  // Options: "fp32", "fp16", "q8", "q4"
+}});
 
 // Use the model
 const result = await pipe('input text or data');
