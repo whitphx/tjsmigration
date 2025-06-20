@@ -9,8 +9,6 @@ from dataclasses import dataclass
 import onnx
 from huggingface_hub import HfApi, ModelInfo
 
-from .tempdir import temp_dir_if_none
-
 
 logger = logging.getLogger(__name__)
 
@@ -131,16 +129,16 @@ def create_reason_text(reason: Literal["missing", "invalid"]) -> str:
 
 
 def create_summary_text(results: list[QuantizationResult]) -> str:
-    summary = "### Applied Quantizations\n"
+    summary = "## Applied Quantizations\n"
     for result in results:
-        summary += f"#### {'✅' if result.success else '❌'} `{result.config.base_model.stem}.onnx`\n"
+        summary += f"### {'✅' if result.success else '❌'} Based on `{result.config.base_model.stem}.onnx`\n"
         for quantization in result.config.quantizations:
-            summary += f"- `{quantization.type}` ({create_reason_text(quantization.reason)})\n"
+            summary += f"↳ `{quantization.type}` ({create_reason_text(quantization.reason)})\n"
         summary += "\n"
     return summary
 
 
-def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path):
+def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path) -> str:
     repo_id = model_info.id
 
     downloaded_path = hf_api.snapshot_download(repo_id=repo_id, repo_type="model")
@@ -160,4 +158,5 @@ def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, output_dir: Path):
         results.append(result)
 
     summary = create_summary_text(results)
-    logger.info(summary)
+
+    return summary

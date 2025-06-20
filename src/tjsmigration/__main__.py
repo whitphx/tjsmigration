@@ -49,13 +49,15 @@ def migrate(repo_id: str, output_dir: str | None, upload: bool, only: list[str])
 
         repo_onnx_output_dir = repo_output_dir / "onnx"
 
-        if "model" in only:
-            migrate_model_files(hf_api=hf_api, model_info=repo_info, output_dir=repo_onnx_output_dir)
         if "readme" in only:
             migrate_readme(hf_api=hf_api, anthropic_client=anthropic_client, model_info=repo_info, output_dir=repo_output_dir)
+        if "model" in only:
+            summary = migrate_model_files(hf_api=hf_api, model_info=repo_info, output_dir=repo_onnx_output_dir)
+
+        logger.info(summary)
 
         files = [p for p in repo_output_dir.glob("**/*") if p.is_file()]
-        logger.info(f"Generated files: {[str(p) for p in files]}")
+        logger.info(f"Generated files:\n{'\n'.join([' - ' + str(p) for p in files])}")
 
         if len(files) == 0:
             logger.warning("No files were created")
@@ -70,6 +72,7 @@ def migrate(repo_id: str, output_dir: str | None, upload: bool, only: list[str])
             folder_path=repo_output_dir,
             repo_type="model",
             commit_message="Add/update the quantized ONNX model files and README.md for Transformers.js v3",
+            commit_description=summary,
             create_pr=True,
         )
         logger.info(f"Uploaded quantized models to the Hugging Face Hub: {commit_info}")

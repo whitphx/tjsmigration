@@ -11,10 +11,10 @@ from typing import Optional
 from huggingface_hub import HfApi, ModelInfo
 from anthropic import Anthropic
 
-logger = logging.getLogger(__name__)
-
-from .tempdir import temp_dir_if_none
 from .task_type import infer_transformers_task_type
+
+
+logger = logging.getLogger(__name__)
 
 
 class UserAction(Enum):
