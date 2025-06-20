@@ -1,6 +1,8 @@
 import os
+from datetime import datetime
 import logging
 import shutil
+import json
 from pathlib import Path
 
 import click
@@ -13,6 +15,9 @@ from .tempdir import temp_dir_if_none
 from .task_type import infer_transformers_task_type
 
 logger = logging.getLogger(__name__)
+
+HERE = Path(__file__).parent
+ROOT = HERE.parent.parent
 
 
 @click.group()
@@ -32,7 +37,7 @@ def get_user_confirmation_to_upload(repo_id: str, files: list[Path], summary: st
     return click.confirm(text)
 
 
-def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir: str | None, upload: bool, only: list[str]):
+def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir: str | None, upload: bool, only: list[str], result_file_path: Path | None):
     logger.info(f"Migrating {repo_id}...")
     logger.info(f"Upload: {upload}")
     logger.info(f"Only: {only}")
@@ -84,6 +89,16 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
 
         print(f"Pull request created: {commit_info.pr_url}")
 
+        if result_file_path:
+            with result_file_path.open("w") as f:
+                json.dump(
+                    {
+                        "repo_id": repo_id,
+                        "pr_url": commit_info.pr_url,
+                    },
+                    f,
+                )
+
 
 @cli.command()
 @click.option("--repo", required=True, multiple=True)
@@ -104,8 +119,10 @@ def migrate(repo: list[str], output_dir: str | None, upload: bool, only: list[st
 
     logger.info(f"Migrating {repo}...")
 
+    result_file_path = ROOT / f"result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
     for repo_id in repo:
-        migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir=output_dir, upload=upload, only=only)
+        migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir=output_dir, upload=upload, only=only, result_file_path=result_file_path)
 
 
 @cli.command()
