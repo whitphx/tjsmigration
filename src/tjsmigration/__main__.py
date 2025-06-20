@@ -101,11 +101,14 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
 
 
 @cli.command()
-@click.option("--repo", required=True, multiple=True)
+@click.option("--repo", required=False, multiple=True, type=str)
+@click.option("--author", required=False, type=str)
+@click.option("--model-name", required=False, type=str)
+@click.option("--filter", required=False, multiple=True, type=str)
 @click.option("--output-dir", required=False, type=click.Path(exists=False))
 @click.option("--upload", required=False, is_flag=True)
 @click.option("--only", required=False, multiple=True, type=click.Choice(["readme", "model"]), default=["readme", "model"])
-def migrate(repo: list[str], output_dir: str | None, upload: bool, only: list[str]):
+def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter: tuple[str], output_dir: str | None, upload: bool, only: list[str]):
     token = os.getenv("HF_TOKEN")
     if not token:
         raise ValueError("HF_TOKEN is not set")
@@ -116,6 +119,18 @@ def migrate(repo: list[str], output_dir: str | None, upload: bool, only: list[st
 
     hf_api = HfApi(token=token)
     anthropic_client = Anthropic(api_key=anthropic_api_key)
+
+    repo = list(repo)
+
+    if author or model_name or filter:
+        search_results = hf_api.list_models(library="transformers.js", author=author, model_name=model_name, filter=filter)
+        searched_repo_ids = [r.id for r in search_results]
+        repo = repo + searched_repo_ids
+
+    logger.info(f"Target repos:\n{'\n'.join([' - ' + r for r in repo])}")
+    if not click.confirm("Are you sure you want to migrate these repos?"):
+        logger.info("Migration cancelled by user")
+        return
 
     logger.info(f"Migrating {repo}...")
 
