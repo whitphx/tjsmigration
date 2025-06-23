@@ -115,11 +115,12 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
 @click.option("--author", required=False, type=str)
 @click.option("--model-name", required=False, type=str)
 @click.option("--filter", required=False, multiple=True, type=str)
+@click.option("--exclude", required=False, multiple=True, type=str)
 @click.option("--output-dir", required=False, type=click.Path(exists=False))
 @click.option("--working-dir", required=False, type=click.Path(exists=False))
 @click.option("--upload", required=False, is_flag=True)
 @click.option("--only", required=False, multiple=True, type=click.Choice(["readme", "model"]), default=["readme", "model"])
-def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter: tuple[str], output_dir: str | None, working_dir: str | None, upload: bool, only: list[str]):
+def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter: tuple[str], exclude: tuple[str], output_dir: str | None, working_dir: str | None, upload: bool, only: list[str]):
     token = os.getenv("HF_TOKEN")
     if not token:
         raise ValueError("HF_TOKEN is not set")
@@ -138,7 +139,10 @@ def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter
         searched_repo_ids = [r.id for r in search_results]
         repo = repo + searched_repo_ids
 
-    logger.info(f"Target repos:\n{'\n'.join([' - ' + r for r in repo])}")
+    if exclude:
+        repo = [r for r in repo if r not in exclude]
+
+    logger.info(f"Target repos ({len(repo)}):\n{'\n'.join([' - ' + r for r in repo])}")
     if not click.confirm("Are you sure you want to migrate these repos?"):
         logger.info("Migration cancelled by user")
         return
