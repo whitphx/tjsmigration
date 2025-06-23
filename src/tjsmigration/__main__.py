@@ -37,7 +37,7 @@ def get_user_confirmation_to_upload(repo_id: str, files: list[Path], summary: st
     return click.confirm(text)
 
 
-def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir_path: str | None, working_dir_path: str | None, upload: bool, only: list[str], result_file_path: Path | None):
+def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir_path: str | None, working_dir_path: str | None, upload: bool, only: list[str], log_file_path: Path | None):
     logger.info(f"Migrating {repo_id}...")
     logger.info(f"Upload: {upload}")
     logger.info(f"Only: {only}")
@@ -99,12 +99,13 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
 
         print(f"Pull request created: {commit_info.pr_url}")
 
-        if result_file_path:
-            with result_file_path.open("w") as f:
+        if log_file_path:
+            with log_file_path.open("w") as f:
                 json.dump(
                     {
                         "repo_id": repo_id,
                         "pr_url": commit_info.pr_url,
+                        "datetime": datetime.now().isoformat(),
                     },
                     f,
                 )
@@ -142,6 +143,19 @@ def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter
     if exclude:
         repo = [r for r in repo if r not in exclude]
 
+    log_file_path = ROOT / f"log.json"
+
+    done_repo_ids = []
+    if log_file_path.exists():
+        logger.info(f"Loading done repo IDs from {log_file_path}...")
+        with log_file_path.open("r") as f:
+            for line in f:
+                current_log = json.loads(line)
+                done_repo_ids.append(current_log["repo_id"])
+        logger.info(f"Loaded {len(done_repo_ids)} done repo IDs from {log_file_path}")
+
+    repo = [r for r in repo if r not in done_repo_ids]
+
     logger.info(f"Target repos ({len(repo)}):\n{'\n'.join([' - ' + r for r in repo])}")
     if not click.confirm("Are you sure you want to migrate these repos?"):
         logger.info("Migration cancelled by user")
@@ -149,10 +163,8 @@ def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter
 
     logger.info(f"Migrating {repo}...")
 
-    result_file_path = ROOT / f"result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-
     for repo_id in repo:
-        migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir_path=output_dir, working_dir_path=working_dir, upload=upload, only=only, result_file_path=result_file_path)
+        migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir_path=output_dir, working_dir_path=working_dir, upload=upload, only=only, log_file_path=log_file_path)
 
 
 @cli.command()
