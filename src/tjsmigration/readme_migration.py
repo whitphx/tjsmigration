@@ -218,14 +218,17 @@ def call_readme_update_llm(anthropic_client: Anthropic, orig_content: str, task_
         proposed_content = response.content[0].text.strip()
         return proposed_content
 
-def update_readme_content(anthropic_client: Anthropic, orig_content: str, task_type: str, repo_id: str) -> str:
+def update_readme_content(anthropic_client: Anthropic, orig_content: str, task_type: str, repo_id: str, auto: bool) -> str:
     additional_instructions = []
     while True:
         proposed_content = call_readme_update_llm(anthropic_client, orig_content, task_type, repo_id, additional_instructions)
 
         print_colored_diff(orig_content, proposed_content)
 
-        user_response = get_user_confirmation_and_edit(proposed_content, additional_instructions)
+        if auto:
+            return proposed_content
+        else:
+            user_response = get_user_confirmation_and_edit(proposed_content, additional_instructions)
 
         if user_response.action == UserAction.ACCEPT:
             return proposed_content
@@ -239,7 +242,7 @@ def update_readme_content(anthropic_client: Anthropic, orig_content: str, task_t
             raise KeyboardInterrupt
 
 
-def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, model_info: ModelInfo, output_dir: Path):
+def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, model_info: ModelInfo, output_dir: Path, auto: bool):
     repo_id = model_info.id
 
     downloaded_path = hf_api.snapshot_download(repo_id=repo_id, repo_type="model")
@@ -250,7 +253,7 @@ def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, model_info: Model
 
     task_type = infer_transformers_task_type(model_info=model_info)
 
-    new_readme_content = update_readme_content(anthropic_client, orig_readme_content, task_type, repo_id)
+    new_readme_content = update_readme_content(anthropic_client, orig_readme_content, task_type, repo_id, auto)
 
     output_readme_path = output_dir / "README.md"
     with output_readme_path.open("w") as f:

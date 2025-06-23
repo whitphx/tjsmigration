@@ -37,7 +37,7 @@ def get_user_confirmation_to_upload(repo_id: str, files: list[Path], summary: st
     return click.confirm(text)
 
 
-def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir_path: str | None, working_dir_path: str | None, upload: bool, only: list[str], log_file_path: Path | None):
+def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir_path: str | None, working_dir_path: str | None, upload: bool, only: list[str], log_file_path: Path | None, auto: bool):
     logger.info(f"Migrating {repo_id}...")
     logger.info(f"Upload: {upload}")
     logger.info(f"Only: {only}")
@@ -64,7 +64,7 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
         repo_onnx_working_dir = repo_working_dir / "onnx"
 
         if "readme" in only:
-            migrate_readme(hf_api=hf_api, anthropic_client=anthropic_client, model_info=repo_info, output_dir=repo_output_dir)
+            migrate_readme(hf_api=hf_api, anthropic_client=anthropic_client, model_info=repo_info, output_dir=repo_output_dir, auto=auto)
         if "model" in only:
             repo_onnx_working_dir.mkdir(parents=True, exist_ok=True)
             repo_onnx_output_dir.mkdir(parents=True, exist_ok=True)
@@ -82,9 +82,10 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
             logger.info("Skipping upload")
             return
 
-        if not get_user_confirmation_to_upload(repo_id, files, summary):
-            logger.info("Upload cancelled by user")
-            return
+        if not auto:
+            if not get_user_confirmation_to_upload(repo_id, files, summary):
+                logger.info("Upload cancelled by user")
+                return
 
         logger.info(f"Uploading quantized models to {repo_id}...")
         commit_info = hf_api.upload_folder(
@@ -121,7 +122,8 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
 @click.option("--working-dir", required=False, type=click.Path(exists=False))
 @click.option("--upload", required=False, is_flag=True)
 @click.option("--only", required=False, multiple=True, type=click.Choice(["readme", "model"]), default=["readme", "model"])
-def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter: tuple[str], exclude: tuple[str], output_dir: str | None, working_dir: str | None, upload: bool, only: list[str]):
+@click.option("--auto", required=False, is_flag=True)
+def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter: tuple[str], exclude: tuple[str], output_dir: str | None, working_dir: str | None, upload: bool, only: list[str], auto: bool):
     token = os.getenv("HF_TOKEN")
     if not token:
         raise ValueError("HF_TOKEN is not set")
@@ -129,6 +131,11 @@ def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
     if not anthropic_api_key:
         raise ValueError("ANTHROPIC_API_KEY is not set")
+
+    if auto and not upload:
+        if not click.confirm("Are you sure you want to run in auto mode without uploading?"):
+            logger.info("Migration cancelled by user")
+            return
 
     hf_api = HfApi(token=token)
     anthropic_client = Anthropic(api_key=anthropic_api_key)
@@ -157,14 +164,15 @@ def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter
     repo = [r for r in repo if r not in done_repo_ids]
 
     logger.info(f"Target repos ({len(repo)}):\n{'\n'.join([' - ' + r for r in repo])}")
-    if not click.confirm("Are you sure you want to migrate these repos?"):
-        logger.info("Migration cancelled by user")
-        return
+    if not auto:
+        if not click.confirm("Are you sure you want to migrate these repos?"):
+            logger.info("Migration cancelled by user")
+            return
 
     logger.info(f"Migrating {repo}...")
 
     for repo_id in repo:
-        migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir_path=output_dir, working_dir_path=working_dir, upload=upload, only=only, log_file_path=log_file_path)
+        migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir_path=output_dir, working_dir_path=working_dir, upload=upload, only=only, log_file_path=log_file_path, auto=auto)
 
 
 @cli.command()
