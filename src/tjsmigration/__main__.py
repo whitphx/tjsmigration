@@ -100,7 +100,7 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
         print(f"Pull request created: {commit_info.pr_url}")
 
         if log_file_path:
-            with log_file_path.open("w") as f:
+            with log_file_path.open("a") as f:
                 json.dump(
                     {
                         "repo_id": repo_id,
