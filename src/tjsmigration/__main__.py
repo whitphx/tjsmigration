@@ -110,6 +110,7 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
                     },
                     f,
                 )
+                f.write("\n")
 
 
 @cli.command()
@@ -140,7 +141,7 @@ def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter
     hf_api = HfApi(token=token)
     anthropic_client = Anthropic(api_key=anthropic_api_key)
 
-    repo = list(repo)
+    repo: list[str] = list(repo)
 
     if author or model_name or filter:
         search_results = hf_api.list_models(library="transformers.js", author=author, model_name=model_name, filter=filter)
@@ -162,6 +163,10 @@ def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter
         logger.info(f"Loaded {len(done_repo_ids)} done repo IDs from {log_file_path}")
 
     repo = [r for r in repo if r not in done_repo_ids]
+
+    if len(repo) == 0:
+        logger.info("No repos to migrate")
+        return
 
     logger.info(f"Target repos ({len(repo)}):\n{'\n'.join([' - ' + r for r in repo])}")
     if not auto:
