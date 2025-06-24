@@ -158,6 +158,8 @@ def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter
         logger.info(f"Loading done repo IDs from {log_file_path}...")
         with log_file_path.open("r") as f:
             for line in f:
+                if not line.strip():
+                    continue
                 current_log = json.loads(line)
                 done_repo_ids.append(current_log["repo_id"])
         logger.info(f"Loaded {len(done_repo_ids)} done repo IDs from {log_file_path}")
