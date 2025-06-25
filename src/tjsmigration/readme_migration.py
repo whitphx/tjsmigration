@@ -313,8 +313,8 @@ npm i @huggingface/transformers
 '''''
 
 ## Basic Usage Example Template:
-Add or update a basic usage example based on the task type and  model type as the template below.
-Use the repository ID from the prompt to create an appropriate example.
+Add or update a basic usage example as the template below.
+DON'T change the first and second arguments of the pipeline function that are the task type and model name.
 Replace the elements in the existing examples such as the model name, task type, pipeline variable name, etc, keeping other elements such as the comments and outputs as-is, if they exist.
 
 ```js
