@@ -160,7 +160,7 @@ def _generate_prompt(content: str, task_type: str, repo_id: str, additional_inst
 
 ## CRITICAL REQUIREMENTS:
 1. **Output only the migrated README content** - NO wrapper text, explanations, or meta-commentary
-2. **Preserve original structure** - Keep the same sections, formatting, and overall organization
+2. **Preserve original structure** - Keep the same sections, formatting, and overall organization. When adding the installation instructions, add it in the same section as the basic usage example, unless the original README has different structure.
 3. **Minimal changes only** - Only update what's necessary for v3 compatibility
 4. **PRESERVE FRONTMATTER** - Keep all YAML frontmatter (content between --- lines) exactly as-is
 
@@ -209,6 +209,7 @@ const {_get_pipeline_variable_name(task_type)} = await pipeline('{task_type}', '
 - DO NOT add wrapper text like "Here is the migrated content"
 - PRESERVE comments that are example outputs (like "// Found car at...")
 - Keep the exact same markdown structure and sections. No need to add new headings if the original README has no headings.
+- DO NOT change the markdown structure, move the existing headings, or any other document structure.
 - Return ONLY the migrated README content, nothing else
 
 
