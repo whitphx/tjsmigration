@@ -136,6 +136,25 @@ def get_user_confirmation_and_edit(content: str, existing_instructions: list[str
             print("Invalid choice. Please enter 'y', 'e', 'r', or 'q'.")
 
 
+
+def _get_pipeline_variable_name(task_type: str) -> str:
+    if task_type == "automatic-speech-recognition":
+        return "transcriber"
+    else:
+        return "pipe"
+
+
+def _get_usage_example_snippet(task_type: str) -> str:
+    if task_type == "automatic-speech-recognition":
+        return f"""const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/jfk.wav';
+const output = await {_get_pipeline_variable_name(task_type)}(url);
+"""
+    else:
+        return f"""const result = await {_get_pipeline_variable_name(task_type)}('input text or data');
+console.log(result);
+"""
+
+
 def _generate_prompt(content: str, task_type: str, repo_id: str, additional_instructions: list[str]) -> str:
     prompt = f"""You are migrating a Transformers.js model repository README from v2 to v3. Your task is to update the README content while preserving its original structure and purpose.
 
@@ -172,13 +191,12 @@ Add or update a basic usage example based on the model type. Use the repository 
 import {{ pipeline }} from '@huggingface/transformers';
 
 // Create the pipeline
-const pipe = await pipeline('{task_type}', '{repo_id}', {{
+const {_get_pipeline_variable_name(task_type)} = await pipeline('{task_type}', '{repo_id}', {{
     dtype: 'fp32',  // Options: "fp32", "fp16", "q8", "q4"
 }});
 
 // Use the model
-const result = await pipe('input text or data');
-console.log(result);
+{_get_usage_example_snippet(task_type)}
 ```
 
 ## STRICT GUIDELINES:
