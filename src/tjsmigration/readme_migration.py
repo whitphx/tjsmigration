@@ -136,21 +136,150 @@ def get_user_confirmation_and_edit(content: str, existing_instructions: list[str
             print("Invalid choice. Please enter 'y', 'e', 'r', or 'q'.")
 
 
-
-def _get_pipeline_variable_name(task_type: str) -> str:
-    if task_type == "automatic-speech-recognition":
-        return "transcriber"
-    else:
-        return "pipe"
-
-
-def _get_usage_example_snippet(task_type: str) -> str:
-    if task_type == "automatic-speech-recognition":
-        return f"""const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/jfk.wav';
-const output = await {_get_pipeline_variable_name(task_type)}(url);
+def _get_usage_example(task_type: str, repo_id: str) -> str:
+    if task_type == "fill-mask":
+        return f"""const unmasker = await pipeline('fill-mask', '{repo_id}');
+const output = await unmasker('The goal of life is [MASK].');
+"""
+    elif task_type == "question-answering":
+        return f"""const answerer = await pipeline('question-answering', '{repo_id}');
+const question = 'Who was Jim Henson?';
+const context = 'Jim Henson was a nice puppet.';
+const output = await answerer(question, context);
+"""
+    elif task_type == "summarization":
+        return f"""const generator = await pipeline('summarization', '{repo_id}');
+const text = 'The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, ' +
+  'and the tallest structure in Paris. Its base is square, measuring 125 metres (410 ft) on each side. ' +
+  'During its construction, the Eiffel Tower surpassed the Washington Monument to become the tallest ' +
+  'man-made structure in the world, a title it held for 41 years until the Chrysler Building in New ' +
+  'York City was finished in 1930. It was the first structure to reach a height of 300 metres. Due to ' +
+  'the addition of a broadcasting aerial at the top of the tower in 1957, it is now taller than the ' +
+  'Chrysler Building by 5.2 metres (17 ft). Excluding transmitters, the Eiffel Tower is the second ' +
+  'tallest free-standing structure in France after the Millau Viaduct.';
+const output = await generator(text, {{
+  max_new_tokens: 100,
+}});
+"""
+    elif task_type == "sentiment-analysis" or task_type == "text-classification":
+        return f"""const classifier = await pipeline('{task_type}', '{repo_id}');
+const output = await classifier('I love transformers!');
+"""
+    elif task_type == "text-generation":
+        return f"""const generator = await pipeline('text-generation', '{repo_id}');
+const output = await generator('Once upon a time, there was', {{ max_new_tokens: 10 }});
+"""
+    elif task_type == "text2text-generation":
+        return f"""const generator = await pipeline('text2text-generation', '{repo_id}');
+const output = await generator('how can I become more healthy?', {{
+  max_new_tokens: 100,
+}});
+"""
+    elif task_type == "token-classification" or task_type == "ner":
+        return f"""const classifier = await pipeline('token-classification', '{repo_id}');
+const output = await classifier('My name is Sarah and I live in London');
+"""
+    elif task_type == "translation":
+        return f"""const translator = await pipeline('translation', '{repo_id}');
+const output = await translator('Life is like a box of chocolate.', {{
+  src_lang: '...',
+  tgt_lang: '...',
+}});
+"""
+    elif task_type == "zero-shot-classification":
+        return f"""const classifier = await pipeline('zero-shot-classification', '{repo_id}');
+const text = 'Last week I upgraded my iOS version and ever since then my phone has been overheating whenever I use your app.';
+const labels = [ 'mobile', 'billing', 'website', 'account access' ];
+const output = await classifier(text, labels);
+"""
+    elif task_type == "feature-extraction":
+        return f"""const extractor = await pipeline('feature-extraction', '{repo_id}');
+const output = await extractor('This is a simple test.');
+"""
+# Vision
+    elif task_type == "background-removal":
+        return f"""const segmenter = await pipeline('background-removal', '{repo_id}');
+const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/portrait-of-woman_small.jpg';
+const output = await segmenter(url);
+"""
+    elif task_type == "depth-estimation":
+        return f"""const depth_estimator = await pipeline('depth-estimation', '{repo_id}');
+const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/cats.jpg';
+const out = await depth_estimator(url);
+"""
+    elif task_type == "image-classification":
+        return f"""const classifier = await pipeline('image-classification', '{repo_id}');
+const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/tiger.jpg';
+const output = await classifier(url);
+"""
+    elif task_type == "image-segmentation":
+        return f"""const segmenter = await pipeline('image-segmentation', '{repo_id}');
+const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/cats.jpg';
+const output = await segmenter(url);
+"""
+    elif task_type == "image-to-image":
+        return f"""const processor = await pipeline('image-to-image', '{repo_id}');
+const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/tiger.jpg';
+const output = await processor(url);
+"""
+    elif task_type == "object-detection":
+        return f"""const detector = await pipeline('object-detection', '{repo_id}');
+const img = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/cats.jpg';
+const output = await detector(img, {{ threshold: 0.9 }});
+"""
+    elif task_type == "image-feature-extraction":
+        return f"""const image_feature_extractor = await pipeline('image-feature-extraction', '{repo_id}');
+const url = 'https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.png';
+const features = await image_feature_extractor(url);
+"""
+# Audio
+    elif task_type == "audio-classification":
+        return f"""const classifier = await pipeline('audio-classification', '{repo_id}');
+const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/jfk.wav';
+const output = await classifier(url);
+"""
+    elif task_type == "automatic-speech-recognition":
+        return f"""const transcriber = await pipeline('automatic-speech-recognition', '{repo_id}');
+const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/jfk.wav';
+const output = await transcriber(url);
+"""
+    elif task_type == "text-to-audio" or task_type == "text-to-speech":
+        return f"""const synthesizer = await pipeline('text-to-speech', '{repo_id}');
+const output = await synthesizer('Hello, my dog is cute');
+"""
+# Multimodal
+    elif task_type == "document-question-answering":
+        return f"""const qa_pipeline = await pipeline('document-question-answering', '{repo_id}');
+const image = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/invoice.png';
+const question = 'What is the invoice number?';
+const output = await qa_pipeline(image, question);
+"""
+    elif task_type == "image-to-text":
+        return f"""const captioner = await pipeline('image-to-text', '{repo_id}');
+const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/cats.jpg';
+const output = await captioner(url);
+"""
+    elif task_type == "zero-shot-audio-classification":
+        return f"""const classifier = await pipeline('zero-shot-audio-classification', '{repo_id}');
+const audio = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/dog_barking.wav';
+const candidate_labels = ['dog', 'vaccum cleaner'];
+const scores = await classifier(audio, candidate_labels);
+"""
+    elif task_type == "zero-shot-image-classification":
+        return f"""const classifier = await pipeline('zero-shot-image-classification', '{repo_id}');
+const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/tiger.jpg';
+const output = await classifier(url, ['tiger', 'horse', 'dog']);
+"""
+    elif task_type == "zero-shot-object-detection":
+        return f"""const detector = await pipeline('zero-shot-object-detection', '{repo_id}');
+const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/astronaut.png';
+const candidate_labels = ['human face', 'rocket', 'helmet', 'american flag'];
+const output = await detector(url, candidate_labels);
 """
     else:
-        return f"""const result = await {_get_pipeline_variable_name(task_type)}('input text or data');
+        logger.warning(f"No usage example found for task type: {task_type}")
+        return f"""const pipe = await pipeline('{task_type}', '{repo_id}');
+const result = await pipe('input text or data');
 console.log(result);
 """
 
@@ -172,7 +301,6 @@ def _generate_prompt(content: str, task_type: str, repo_id: str, additional_inst
 5. **Modern JavaScript**: Use `const` instead of `let` or `var` for variables that aren't reassigned
 6. **Add semicolons**: Ensure statements end with semicolons where appropriate
 7. **Keep code formats**: Keep the code formats such as white spaces, line breaks, etc. as is
-8. **Add the third argument to the pipeline function**: Add the third argument to the pipeline function that is a configuration object whose value is {{ dtype: "fp32" }}. It should be in the next line after the pipeline creation line with a comment saying '// Options: "fp32", "fp16", "q8", "q4"'
 
 ## Installation Section Template:
 When adding installation instructions, use this format before the first code example:
@@ -185,18 +313,14 @@ npm i @huggingface/transformers
 '''''
 
 ## Basic Usage Example Template:
-Add or update a basic usage example based on the model type. Use the repository ID from the prompt to create an appropriate example:
+Add or update a basic usage example based on the task type and  model type as the template below.
+Use the repository ID from the prompt to create an appropriate example.
+Replace the elements in the existing examples such as the model name, task type, pipeline variable name, etc, keeping other elements such as the comments and outputs as-is, if they exist.
 
 ```js
 import {{ pipeline }} from '@huggingface/transformers';
 
-// Create the pipeline
-const {_get_pipeline_variable_name(task_type)} = await pipeline('{task_type}', '{repo_id}', {{
-    dtype: 'fp32',  // Options: "fp32", "fp16", "q8", "q4"
-}});
-
-// Use the model
-{_get_usage_example_snippet(task_type)}
+{_get_usage_example(task_type, repo_id)}
 ```
 
 ## STRICT GUIDELINES:
