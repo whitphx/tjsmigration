@@ -314,14 +314,23 @@ npm i @huggingface/transformers
 
 ## Basic Usage Example Template:
 Add or update a basic usage example as the template below.
-DON'T change the first and second arguments of the pipeline function that are the task type and model name.
-Replace the elements in the existing examples such as the model name, task type, pipeline variable name, etc, keeping other elements such as the comments and outputs as-is, if they exist.
 
+'''''
 ```js
 import {{ pipeline }} from '@huggingface/transformers';
 
 {_get_usage_example(task_type, repo_id)}
 ```
+'''''
+
+#### GUIDELINES for the basic usage example:
+- Use the first and second arguments of the pipeline function as-is from this template. If they are different in the original README, update them to match the template.
+- Replace the elements such as the model name, task type, pipeline variable name in the existing examples.
+- DO NOT change elements such as comments as-is, if they exist.
+
+## Properties of the model:
+ID: {repo_id}
+Task type: {task_type}
 
 ## STRICT GUIDELINES:
 - **NEVER remove frontmatter** - Keep all YAML metadata between --- lines exactly as-is
@@ -329,6 +338,7 @@ import {{ pipeline }} from '@huggingface/transformers';
 - **ADD basic usage example** - If no code examples exist, add a simple usage example based on the model type
 - DO NOT add explanatory text about what the code does beyond basic usage
 - DO NOT move example outputs or change code structure
+- DO NOT change the first and second arguments of the pipeline function from the template above, that are the task type and model name.
 - DO NOT add sections that weren't in the original (except installation and basic usage)
 - DO NOT add wrapper text like "Here is the migrated content"
 - PRESERVE comments that are example outputs (like "// Found car at...")
@@ -336,12 +346,11 @@ import {{ pipeline }} from '@huggingface/transformers';
 - DO NOT change the markdown structure, move the existing headings, or delete any existing elements such as sections, dividers, etc.
 - Return ONLY the migrated README content, nothing else
 
+{"## ADDITIONAL USER INSTRUCTION:" if additional_instructions else ""}
+{'\n\n'.join(additional_instructions)}
 
 ## Original README Content:
 {content}
-
-{"## ADDITIONAL USER INSTRUCTION:" if additional_instructions else ""}
-{'\n\n'.join(additional_instructions)}
 
 ## MIGRATED README (output only this):"""
     return prompt
@@ -388,10 +397,14 @@ def update_readme_content(anthropic_client: Anthropic, orig_content: str, task_t
 def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, model_info: ModelInfo, output_dir: Path, auto: bool):
     repo_id = model_info.id
 
-    downloaded_path = hf_api.snapshot_download(repo_id=repo_id, repo_type="model")
-    readme_path = Path(downloaded_path) / "README.md"
+    downloaded_readme_path = hf_api.hf_hub_download(
+        repo_id=repo_id,
+        repo_type="model",
+        filename="README.md",
+    )
+    downloaded_readme_path = Path(downloaded_readme_path)
 
-    with readme_path.open("r") as f:
+    with downloaded_readme_path.open("r") as f:
         orig_readme_content = f.read()
 
     task_type = infer_transformers_task_type(model_info=model_info)

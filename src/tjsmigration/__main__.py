@@ -128,7 +128,20 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
 @click.option("--upload", required=False, is_flag=True)
 @click.option("--only", required=False, multiple=True, type=click.Choice(["readme", "model"]), default=["readme", "model"])
 @click.option("--auto", required=False, is_flag=True)
-def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter: tuple[str], exclude: tuple[str], output_dir: str | None, working_dir: str | None, upload: bool, only: list[str], auto: bool):
+@click.option("--ignore-done", required=False, is_flag=True)
+def migrate(
+    repo: tuple[str],
+    author: str | None,
+    model_name: str | None,
+    filter: tuple[str],
+    exclude: tuple[str],
+    output_dir: str | None,
+    working_dir: str | None,
+    upload: bool,
+    only: list[str],
+    auto: bool,
+    ignore_done: bool,
+):
     token = os.getenv("HF_TOKEN")
     if not token:
         raise ValueError("HF_TOKEN is not set")
@@ -155,18 +168,19 @@ def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter
     if exclude:
         repo = [r for r in repo if r not in exclude]
 
-    done_repo_ids = []
-    if LOG_FILE_PATH.exists():
-        logger.info(f"Loading done repo IDs from {LOG_FILE_PATH}...")
-        with LOG_FILE_PATH.open("r") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                current_log = json.loads(line)
-                done_repo_ids.append(current_log["repo_id"])
-        logger.info(f"Loaded {len(done_repo_ids)} done repo IDs from {LOG_FILE_PATH}")
+    if not ignore_done:
+        done_repo_ids = []
+        if LOG_FILE_PATH.exists():
+            logger.info(f"Loading done repo IDs from {LOG_FILE_PATH}...")
+            with LOG_FILE_PATH.open("r") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    current_log = json.loads(line)
+                    done_repo_ids.append(current_log["repo_id"])
+            logger.info(f"Loaded {len(done_repo_ids)} done repo IDs from {LOG_FILE_PATH}")
 
-    repo = [r for r in repo if r not in done_repo_ids]
+        repo = [r for r in repo if r not in done_repo_ids]
 
     if len(repo) == 0:
         logger.info("No repos to migrate")
@@ -334,6 +348,51 @@ def regenerate_readme(output_dir: str | None, working_dir: str | None, auto: boo
             auto=auto,
             upload=upload,
         )
+
+
+@cli.command()
+@click.option("--repo", required=False, multiple=True, type=str)
+@click.option("--author", required=False, type=str)
+@click.option("--model-name", required=False, type=str)
+@click.option("--filter", required=False, multiple=True, type=str)
+@click.option("--output-dir", required=False, type=click.Path(exists=False))
+def preview_readme(
+    repo: tuple[str],
+    author: str | None,
+    model_name: str | None,
+    filter: tuple[str],
+    output_dir: str | None,
+):
+    token = os.getenv("HF_TOKEN")
+    if not token:
+        raise ValueError("HF_TOKEN is not set")
+
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY is not set")
+
+    hf_api = HfApi(token=token)
+    anthropic_client = Anthropic(api_key=anthropic_api_key)
+
+    repo: list[str] = list(repo)
+
+    if author or model_name or filter:
+        search_results = hf_api.list_models(library="transformers.js", author=author, model_name=model_name, filter=filter)
+        searched_repo_ids = [r.id for r in search_results]
+        repo = repo + searched_repo_ids
+
+    output_dir = Path(output_dir) if output_dir else None
+
+    with temp_dir_if_none(output_dir) as output_dir:
+        for repo_id in repo:
+            repo_info = hf_api.repo_info(repo_id)
+            migrate_readme(
+                hf_api=hf_api,
+                anthropic_client=anthropic_client,
+                model_info=repo_info,
+                output_dir=output_dir,
+                auto=False
+            )
 
 
 if __name__ == "__main__":
