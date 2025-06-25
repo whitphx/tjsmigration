@@ -209,7 +209,7 @@ const {_get_pipeline_variable_name(task_type)} = await pipeline('{task_type}', '
 - DO NOT add wrapper text like "Here is the migrated content"
 - PRESERVE comments that are example outputs (like "// Found car at...")
 - Keep the exact same markdown structure and sections. No need to add new headings if the original README has no headings.
-- DO NOT change the markdown structure, move the existing headings, or any other document structure.
+- DO NOT change the markdown structure, move the existing headings, or delete any existing elements such as sections, dividers, etc.
 - Return ONLY the migrated README content, nothing else
 
 
