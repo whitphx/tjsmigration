@@ -318,7 +318,12 @@ def regenerate_readme(output_dir: str | None, working_dir: str | None, auto: boo
             current_log = json.loads(line)
             targets.append(ReadmeRegenerationTarget(repo_id=current_log["repo_id"], pr_url=current_log["pr_url"]))
 
-    logger.info(f"Regenerating README.md for {len(targets)} repos...")
+    logger.info(f"Regenerating README.md for {len(targets)} repos:\n{'\n'.join([' - ' + t.repo_id for t in targets])}")
+    if not auto:
+        if not click.confirm("Are you sure you want to regenerate README.md for these repos?"):
+            logger.info("Regeneration cancelled by user")
+            return
+
     for target in targets:
         logger.info(f"Regenerating README.md for {target.repo_id}...")
         regenerate_readme_for_pr(
