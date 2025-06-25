@@ -301,11 +301,18 @@ def regenerate_readme_for_pr(
 
 
 @cli.command()
+@click.option("--repo", required=False, multiple=True, type=str)
 @click.option("--output-dir", required=False, type=click.Path(exists=False))
 @click.option("--working-dir", required=False, type=click.Path(exists=False))
 @click.option("--auto", required=False, is_flag=True)
 @click.option("--upload", required=False, is_flag=True)
-def regenerate_readme(output_dir: str | None, working_dir: str | None, auto: bool, upload: bool):
+def regenerate_readme(
+    repo: tuple[str],
+    output_dir: str | None,
+    working_dir: str | None,
+    auto: bool,
+    upload: bool,
+):
     token = os.getenv("HF_TOKEN")
     if not token:
         raise ValueError("HF_TOKEN is not set")
@@ -322,7 +329,6 @@ def regenerate_readme(output_dir: str | None, working_dir: str | None, auto: boo
     hf_api = HfApi(token=token)
     anthropic_client = Anthropic(api_key=anthropic_api_key)
 
-
     targets: list[ReadmeRegenerationTarget] = []
     with LOG_FILE_PATH.open("r") as f:
         for line in f:
@@ -330,6 +336,9 @@ def regenerate_readme(output_dir: str | None, working_dir: str | None, auto: boo
                 continue
             current_log = json.loads(line)
             targets.append(ReadmeRegenerationTarget(repo_id=current_log["repo_id"], pr_url=current_log["pr_url"]))
+
+    if repo:
+        targets = [t for t in targets if t.repo_id in repo]
 
     logger.info(f"Regenerating README.md for {len(targets)} repos:\n{'\n'.join([' - ' + t.repo_id for t in targets])}")
     if not auto:
