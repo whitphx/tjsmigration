@@ -1,4 +1,6 @@
 import os
+import re
+from dataclasses import dataclass
 from datetime import datetime
 import logging
 import shutil
@@ -18,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent.parent
+
+
+LOG_FILE_PATH = ROOT / f"log.json"
 
 
 @click.group()
@@ -151,18 +156,16 @@ def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter
     if exclude:
         repo = [r for r in repo if r not in exclude]
 
-    log_file_path = ROOT / f"log.json"
-
     done_repo_ids = []
-    if log_file_path.exists():
-        logger.info(f"Loading done repo IDs from {log_file_path}...")
-        with log_file_path.open("r") as f:
+    if LOG_FILE_PATH.exists():
+        logger.info(f"Loading done repo IDs from {LOG_FILE_PATH}...")
+        with LOG_FILE_PATH.open("r") as f:
             for line in f:
                 if not line.strip():
                     continue
                 current_log = json.loads(line)
                 done_repo_ids.append(current_log["repo_id"])
-        logger.info(f"Loaded {len(done_repo_ids)} done repo IDs from {log_file_path}")
+        logger.info(f"Loaded {len(done_repo_ids)} done repo IDs from {LOG_FILE_PATH}")
 
     repo = [r for r in repo if r not in done_repo_ids]
 
@@ -179,7 +182,7 @@ def migrate(repo: tuple[str], author: str | None, model_name: str | None, filter
     logger.info(f"Migrating {repo}...")
 
     for repo_id in repo:
-        migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir_path=output_dir, working_dir_path=working_dir, upload=upload, only=only, log_file_path=log_file_path, auto=auto)
+        migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir_path=output_dir, working_dir_path=working_dir, upload=upload, only=only, log_file_path=LOG_FILE_PATH, auto=auto)
 
 
 @cli.command()
@@ -228,6 +231,105 @@ def test(repo: str, path: list[str]):
                 print(f"Failed to run JS E2E test for {p}: {error_message}")
             else:
                 print(f"Successfully ran JS E2E test for {p}")
+
+
+
+@dataclass
+class ReadmeRegenerationTarget:
+    repo_id: str
+    pr_url: str
+
+
+def get_pr_number_from_pr_url(pr_url: str) -> int:
+    return int(re.search(r"/(\d+)$", pr_url).group(1))
+
+
+def regenerate_readme_for_pr(
+    hf_api: HfApi,
+    anthropic_client: Anthropic,
+    target: ReadmeRegenerationTarget,
+    output_dir_path: str | None,
+    working_dir_path: str | None,
+    auto: bool,
+    upload: bool,
+):
+    logger.info(f"Regenerating README.md for {target.repo_id}...")
+
+    output_dir = Path(output_dir_path) if output_dir_path else None
+    working_dir = Path(working_dir_path) if working_dir_path else None
+
+    with temp_dir_if_none(output_dir) as output_dir, temp_dir_if_none(working_dir) as working_dir:
+        repo_output_dir: Path = output_dir / target.repo_id
+        if repo_output_dir.exists():
+            logger.warning(f"Output directory {repo_output_dir} already exists. This script will overwrite its contents.")
+        repo_output_dir.mkdir(parents=True, exist_ok=True)
+
+        repo_info = hf_api.repo_info(target.repo_id)
+        migrate_readme(hf_api=hf_api, anthropic_client=anthropic_client, model_info=repo_info, output_dir=repo_output_dir, auto=auto)
+
+        if not upload:
+            logger.info("Skipping upload")
+            return
+
+        if not auto:
+            if not click.confirm(f"Are you sure you want to upload README.md to {target.repo_id} (PR #{get_pr_number_from_pr_url(target.pr_url)})?"):
+                logger.info("Upload cancelled by user")
+                return
+
+        pr_number = get_pr_number_from_pr_url(target.pr_url)
+        logger.info(f"Uploading README.md to {target.repo_id} (PR #{pr_number})...")
+        hf_api.upload_file(
+            path_or_fileobj=repo_output_dir / "README.md",
+            path_in_repo="README.md",
+            repo_id=target.repo_id,
+            repo_type="model",
+            revision=f"refs/pr/{pr_number}"
+        )
+
+
+@cli.command()
+@click.option("--output-dir", required=False, type=click.Path(exists=False))
+@click.option("--working-dir", required=False, type=click.Path(exists=False))
+@click.option("--auto", required=False, is_flag=True)
+@click.option("--upload", required=False, is_flag=True)
+def regenerate_readme(output_dir: str | None, working_dir: str | None, auto: bool, upload: bool):
+    token = os.getenv("HF_TOKEN")
+    if not token:
+        raise ValueError("HF_TOKEN is not set")
+
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_api_key:
+        raise ValueError("ANTHROPIC_API_KEY is not set")
+
+    if auto and not upload:
+        if not click.confirm("Are you sure you want to run in auto mode without uploading?"):
+            logger.info("Migration cancelled by user")
+            return
+
+    hf_api = HfApi(token=token)
+    anthropic_client = Anthropic(api_key=anthropic_api_key)
+
+
+    targets: list[ReadmeRegenerationTarget] = []
+    with LOG_FILE_PATH.open("r") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            current_log = json.loads(line)
+            targets.append(ReadmeRegenerationTarget(repo_id=current_log["repo_id"], pr_url=current_log["pr_url"]))
+
+    logger.info(f"Regenerating README.md for {len(targets)} repos...")
+    for target in targets:
+        logger.info(f"Regenerating README.md for {target.repo_id}...")
+        regenerate_readme_for_pr(
+            hf_api=hf_api,
+            anthropic_client=anthropic_client,
+            target=target,
+            output_dir_path=output_dir,
+            working_dir_path=working_dir,
+            auto=auto,
+            upload=upload,
+        )
 
 
 if __name__ == "__main__":
