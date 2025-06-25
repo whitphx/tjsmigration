@@ -74,8 +74,7 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
             repo_onnx_working_dir.mkdir(parents=True, exist_ok=True)
             repo_onnx_output_dir.mkdir(parents=True, exist_ok=True)
             summary = migrate_model_files(hf_api=hf_api, model_info=repo_info, working_dir=repo_onnx_working_dir, output_dir=repo_onnx_output_dir)
-
-        logger.info(summary)
+            logger.info(summary)
 
         files = [p for p in repo_output_dir.glob("**/*") if p.is_file()]
         logger.info(f"Generated files:\n{'\n'.join([' - ' + str(p) for p in files])}")
