@@ -412,6 +412,7 @@ def preview_readme(
 
     with temp_dir_if_none(output_dir) as output_dir:
         for repo_id in repo:
+            logger.info(f"Previewing README.md for {repo_id}...")
             repo_info = hf_api.repo_info(repo_id)
             migrate_readme(
                 hf_api=hf_api,
