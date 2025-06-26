@@ -360,7 +360,7 @@ import {{ pipeline }} from '@huggingface/transformers';
 - Use the first and second arguments of the pipeline function as-is from this template. If they are different in the original README, update them to match the template.
 - The original README content may include different model names as references, but ignore them when inserting the usage example.
 - Replace the elements such as the model name, task type, pipeline variable name in the existing examples.
-- DO NOT change elements such as comments as-is, if they exist.
+- DO NOT change elements such as comments as-is in the existing examples, if they exist.
 
 ## Example Outputs:
 
