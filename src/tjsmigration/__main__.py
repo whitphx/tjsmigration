@@ -24,6 +24,7 @@ ROOT = HERE.parent.parent
 
 
 LOG_FILE_PATH = ROOT / f"log.json"
+FAILED_LOG_FILE_PATH = ROOT / f"failed.json"
 
 
 @click.group()
@@ -227,7 +228,24 @@ def migrate(
     logger.info(f"Migrating {repo}...")
 
     for repo_id in repo:
-        migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir_path=output_dir, working_dir_path=working_dir, upload=upload, only=only, log_file_path=LOG_FILE_PATH, auto=auto)
+        try:
+            migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir_path=output_dir, working_dir_path=working_dir, upload=upload, only=only, log_file_path=LOG_FILE_PATH, auto=auto)
+        except Exception as e:
+            logger.error(f"Error migrating {repo_id}: {e}")
+            if not auto:
+                if not click.confirm("Do you want to continue?"):
+                    logger.info("Migration cancelled by user")
+                    return
+            with FAILED_LOG_FILE_PATH.open("a") as f:
+                json.dump(
+                    {
+                        "repo_id": repo_id,
+                        "error": str(e),
+                        "datetime": datetime.now().isoformat(),
+                    },
+                    f,
+                )
+                f.write("\n")
 
 
 @cli.command()
