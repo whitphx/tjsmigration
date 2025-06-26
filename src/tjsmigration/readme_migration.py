@@ -378,9 +378,9 @@ Task type: {task_type}
 - DO NOT add explanatory text about what the code does beyond basic usage
 - DO NOT move example outputs or change code structure
 - DO NOT change the first and second arguments of the pipeline function from the template above, that are the task type and model name.
-- DO NOT change elements such as comments as-is in the existing examples, if they exist, to keep the changes minimal.
 - DO NOT add sections that weren't in the original (except installation and basic usage)
 - DO NOT add wrapper text like "Here is the migrated content"
+- PRESERVE comments that are aligned with the sample code semantics.
 - PRESERVE comments that are example outputs (like "// Found car at...")
 - Keep the exact same markdown structure and sections. No need to add new headings if the original README has no headings.
 - DO NOT change the markdown structure, move the existing headings, or delete any existing elements such as sections, dividers, etc.
