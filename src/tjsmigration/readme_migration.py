@@ -136,17 +136,17 @@ def get_user_confirmation_and_edit(content: str, existing_instructions: list[str
             print("Invalid choice. Please enter 'y', 'e', 'r', or 'q'.")
 
 
-def _get_usage_example(task_type: str, repo_id: str) -> str:
+def _get_usage_example(task_type: str, repo_id: str) -> tuple[str, str | None]:
     if task_type == "fill-mask":
         return f"""const unmasker = await pipeline('fill-mask', '{repo_id}');
 const output = await unmasker('The goal of life is [MASK].');
-"""
+""", 'Perform masked language modelling (a.k.a. "fill-mask")'
     elif task_type == "question-answering":
         return f"""const answerer = await pipeline('question-answering', '{repo_id}');
 const question = 'Who was Jim Henson?';
 const context = 'Jim Henson was a nice puppet.';
 const output = await answerer(question, context);
-"""
+""", 'Run question answering'
     elif task_type == "summarization":
         return f"""const generator = await pipeline('summarization', '{repo_id}');
 const text = 'The tower is 324 metres (1,063 ft) tall, about the same height as an 81-storey building, ' +
@@ -160,131 +160,160 @@ const text = 'The tower is 324 metres (1,063 ft) tall, about the same height as 
 const output = await generator(text, {{
   max_new_tokens: 100,
 }});
-"""
+""", 'Summarization'
     elif task_type == "sentiment-analysis" or task_type == "text-classification":
         return f"""const classifier = await pipeline('{task_type}', '{repo_id}');
 const output = await classifier('I love transformers!');
-"""
+""", None
     elif task_type == "text-generation":
         return f"""const generator = await pipeline('text-generation', '{repo_id}');
 const output = await generator('Once upon a time, there was', {{ max_new_tokens: 10 }});
-"""
+""", 'Text generation'
     elif task_type == "text2text-generation":
         return f"""const generator = await pipeline('text2text-generation', '{repo_id}');
 const output = await generator('how can I become more healthy?', {{
   max_new_tokens: 100,
 }});
-"""
+""", 'Text-to-text generation'
     elif task_type == "token-classification" or task_type == "ner":
         return f"""const classifier = await pipeline('token-classification', '{repo_id}');
 const output = await classifier('My name is Sarah and I live in London');
-"""
+""", 'Perform named entity recognition'
     elif task_type == "translation":
         return f"""const translator = await pipeline('translation', '{repo_id}');
 const output = await translator('Life is like a box of chocolate.', {{
   src_lang: '...',
   tgt_lang: '...',
 }});
-"""
+""", 'Multilingual translation'
     elif task_type == "zero-shot-classification":
         return f"""const classifier = await pipeline('zero-shot-classification', '{repo_id}');
 const text = 'Last week I upgraded my iOS version and ever since then my phone has been overheating whenever I use your app.';
 const labels = [ 'mobile', 'billing', 'website', 'account access' ];
 const output = await classifier(text, labels);
-"""
+""", 'Zero shot classification'
     elif task_type == "feature-extraction":
         return f"""const extractor = await pipeline('feature-extraction', '{repo_id}');
 const output = await extractor('This is a simple test.');
-"""
+""", 'Run feature extraction'
 # Vision
     elif task_type == "background-removal":
         return f"""const segmenter = await pipeline('background-removal', '{repo_id}');
 const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/portrait-of-woman_small.jpg';
 const output = await segmenter(url);
-"""
+""", 'Perform background removal'
     elif task_type == "depth-estimation":
         return f"""const depth_estimator = await pipeline('depth-estimation', '{repo_id}');
 const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/cats.jpg';
 const out = await depth_estimator(url);
-"""
+""", 'Depth estimation'
     elif task_type == "image-classification":
         return f"""const classifier = await pipeline('image-classification', '{repo_id}');
 const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/tiger.jpg';
 const output = await classifier(url);
-"""
+""", 'Classify an image'
     elif task_type == "image-segmentation":
         return f"""const segmenter = await pipeline('image-segmentation', '{repo_id}');
 const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/cats.jpg';
 const output = await segmenter(url);
-"""
+""", 'Perform image segmentation'
     elif task_type == "image-to-image":
         return f"""const processor = await pipeline('image-to-image', '{repo_id}');
 const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/tiger.jpg';
 const output = await processor(url);
-"""
+""", None
     elif task_type == "object-detection":
         return f"""const detector = await pipeline('object-detection', '{repo_id}');
 const img = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/cats.jpg';
 const output = await detector(img, {{ threshold: 0.9 }});
-"""
+""", 'Run object-detection'
     elif task_type == "image-feature-extraction":
         return f"""const image_feature_extractor = await pipeline('image-feature-extraction', '{repo_id}');
 const url = 'https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/cats.png';
 const features = await image_feature_extractor(url);
-"""
+""", 'Perform image feature extraction'
 # Audio
     elif task_type == "audio-classification":
         return f"""const classifier = await pipeline('audio-classification', '{repo_id}');
 const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/jfk.wav';
 const output = await classifier(url);
-"""
+""", 'Perform audio classification'
     elif task_type == "automatic-speech-recognition":
         return f"""const transcriber = await pipeline('automatic-speech-recognition', '{repo_id}');
 const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/jfk.wav';
 const output = await transcriber(url);
-"""
+""", 'Transcribe audio from a URL'
     elif task_type == "text-to-audio" or task_type == "text-to-speech":
         return f"""const synthesizer = await pipeline('text-to-speech', '{repo_id}');
 const output = await synthesizer('Hello, my dog is cute');
-"""
+""", 'Generate audio from text'
 # Multimodal
     elif task_type == "document-question-answering":
         return f"""const qa_pipeline = await pipeline('document-question-answering', '{repo_id}');
 const image = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/invoice.png';
 const question = 'What is the invoice number?';
 const output = await qa_pipeline(image, question);
-"""
+""", 'Answer questions about a document'
     elif task_type == "image-to-text":
         return f"""const captioner = await pipeline('image-to-text', '{repo_id}');
 const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/cats.jpg';
 const output = await captioner(url);
-"""
+""", 'Generate a caption for an image'
     elif task_type == "zero-shot-audio-classification":
         return f"""const classifier = await pipeline('zero-shot-audio-classification', '{repo_id}');
 const audio = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/dog_barking.wav';
 const candidate_labels = ['dog', 'vaccum cleaner'];
 const scores = await classifier(audio, candidate_labels);
-"""
+""", 'Perform zero-shot audio classification'
     elif task_type == "zero-shot-image-classification":
         return f"""const classifier = await pipeline('zero-shot-image-classification', '{repo_id}');
 const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/tiger.jpg';
 const output = await classifier(url, ['tiger', 'horse', 'dog']);
-"""
+""", 'Zero shot image classification'
     elif task_type == "zero-shot-object-detection":
         return f"""const detector = await pipeline('zero-shot-object-detection', '{repo_id}');
 const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/astronaut.png';
 const candidate_labels = ['human face', 'rocket', 'helmet', 'american flag'];
 const output = await detector(url, candidate_labels);
-"""
+""", 'Zero-shot object detection'
     else:
         logger.warning(f"No usage example found for task type: {task_type}")
         return f"""const pipe = await pipeline('{task_type}', '{repo_id}');
 const result = await pipe('input text or data');
 console.log(result);
+""", None
+
+
+EXAMPLE_OUTPUT = """
+---
+base_model: openai/whisper-medium
+library_name: transformers.js
+---
+https://huggingface.co/openai/whisper-medium with ONNX weights to be compatible with Transformers.js.
+
+## Usage (Transformers.js)
+
+If you haven't already, you can install the [Transformers.js](https://huggingface.co/docs/transformers.js) JavaScript library from [NPM](https://www.npmjs.com/package/@huggingface/transformers) using:
+```bash
+npm i @huggingface/transformers
+```
+
+**Example:** Transcribe audio from a URL.
+
+```js
+import {{ pipeline }} from '@huggingface/transformers';
+const transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-medium');
+const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/jfk.wav';
+const output = await transcriber(url);
+```
+
+Note: Having a separate repo for ONNX weights is intended to be a temporary solution until WebML gains more traction. If you would like to make your models web-ready, we recommend converting to ONNX using [🤗 Optimum](https://huggingface.co/docs/optimum/index) and structuring your repo like this one (with ONNX weights located in a subfolder named `onnx`).
 """
 
 
 def _generate_prompt(content: str, task_type: str, repo_id: str, additional_instructions: list[str]) -> str:
+    usage_example, usage_example_description = _get_usage_example(task_type, repo_id)
+
     prompt = f"""You are migrating a Transformers.js model repository README from v2 to v3. Your task is to update the README content while preserving its original structure and purpose.
 
 ## CRITICAL REQUIREMENTS:
@@ -295,10 +324,11 @@ def _generate_prompt(content: str, task_type: str, repo_id: str, additional_inst
 
 ## Required Changes:
 1. **Package name**: Change `@xenova/transformers` to `@huggingface/transformers`
-2. **Installation instructions**: If there is no installation instructions, add it with the template below. If it already exists, update it to use the new package name.
-3. **Add basic usage example**: If no code examples exist, add a basic usage example. If there are code examples, update them to use the new package name and signatures as follows.
-4. **Remove inline install comments**: Remove `// npm i @xenova/transformers` comments from code blocks because the installation instructions are already added as above
-5. **Modern JavaScript**: Use `const` instead of `let` or `var` for variables that aren't reassigned
+2. **"Usage" section**: Add a new section with heading "## Usage (Transformers.js)" containing installation instructions and basic usage example unless it already exists.
+3. **Installation instructions**: Add an installation instruction based on the template below unless it already exists. If it already exists, update it to use the new package name. The installation instructions should be added in the "Usage" section.
+4. **Add basic usage example**: Add a basic usage example based on the template below unless it already exists. If there are code examples, update them to use the new package name and signatures as follows. The basic usage example should be added in the "Usage" section.
+5. **Remove inline install comments**: Remove `// npm i @xenova/transformers` comments from code blocks because the installation instructions are already added as above
+6. **Modern JavaScript**: Use `const` instead of `let` or `var` for variables that aren't reassigned
 6. **Add semicolons**: Ensure statements end with semicolons where appropriate
 7. **Keep code formats**: Keep the code formats such as white spaces, line breaks, etc. as is
 
@@ -316,17 +346,26 @@ npm i @huggingface/transformers
 Add or update a basic usage example as the template below.
 
 '''''
+**Example:** {usage_example_description}.
+
 ```js
 import {{ pipeline }} from '@huggingface/transformers';
 
-{_get_usage_example(task_type, repo_id)}
+{usage_example}
 ```
 '''''
 
 #### GUIDELINES for the basic usage example:
+- The "Example" is not a heading. Insert it as well in the "Usage" section.
 - Use the first and second arguments of the pipeline function as-is from this template. If they are different in the original README, update them to match the template.
 - Replace the elements such as the model name, task type, pipeline variable name in the existing examples.
 - DO NOT change elements such as comments as-is, if they exist.
+
+## Example Outputs:
+
+'''''
+{EXAMPLE_OUTPUT}
+'''''
 
 ## Properties of the model:
 ID: {repo_id}
