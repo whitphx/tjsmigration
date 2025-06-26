@@ -295,16 +295,13 @@ https://huggingface.co/openai/whisper-medium with ONNX weights to be compatible 
 
 If you haven't already, you can install the [Transformers.js](https://huggingface.co/docs/transformers.js) JavaScript library from [NPM](https://www.npmjs.com/package/@huggingface/transformers) using:
 ```bash
-npm i @huggingface/transformers
+<installation_instructions>
 ```
 
-**Example:** Transcribe audio from a URL.
+**Example:** <example_description>
 
 ```js
-import {{ pipeline }} from '@huggingface/transformers';
-const transcriber = await pipeline('automatic-speech-recognition', 'Xenova/whisper-medium');
-const url = 'https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/jfk.wav';
-const output = await transcriber(url);
+<example_code>
 ```
 
 Note: Having a separate repo for ONNX weights is intended to be a temporary solution until WebML gains more traction. If you would like to make your models web-ready, we recommend converting to ONNX using [🤗 Optimum](https://huggingface.co/docs/optimum/index) and structuring your repo like this one (with ONNX weights located in a subfolder named `onnx`).
@@ -434,7 +431,13 @@ def update_readme_content(anthropic_client: Anthropic, orig_content: str, task_t
             raise KeyboardInterrupt
 
 
-def migrate_readme(hf_api: HfApi, anthropic_client: Anthropic, model_info: ModelInfo, output_dir: Path, auto: bool):
+def migrate_readme(
+    hf_api: HfApi,
+    anthropic_client: Anthropic,
+    model_info: ModelInfo,
+    output_dir: Path,
+    auto: bool,
+):
     repo_id = model_info.id
 
     downloaded_readme_path = hf_api.hf_hub_download(
