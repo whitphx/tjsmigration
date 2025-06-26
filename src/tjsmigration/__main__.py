@@ -13,6 +13,7 @@ from anthropic import Anthropic
 
 from .model_migration import migrate_model_files, parse_quantized_model_filename, prepare_js_e2e_test_directory, validate_onnx_model, run_js_e2e_test
 from .readme_migration import migrate_readme
+from .readme_validation import e2e_readme_samples
 from .tempdir import temp_dir_if_none
 from .task_type import infer_transformers_task_type
 
@@ -69,11 +70,22 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
         repo_onnx_working_dir = repo_working_dir / "onnx"
 
         if "readme" in only:
-            migrate_readme(hf_api=hf_api, anthropic_client=anthropic_client, model_info=repo_info, output_dir=repo_output_dir, auto=auto)
+            migrate_readme(
+                hf_api=hf_api,
+                anthropic_client=anthropic_client,
+                model_info=repo_info,
+                output_dir=repo_output_dir,
+                auto=auto,
+            )
         if "model" in only:
             repo_onnx_working_dir.mkdir(parents=True, exist_ok=True)
             repo_onnx_output_dir.mkdir(parents=True, exist_ok=True)
-            summary = migrate_model_files(hf_api=hf_api, model_info=repo_info, working_dir=repo_onnx_working_dir, output_dir=repo_onnx_output_dir)
+            summary = migrate_model_files(
+                hf_api=hf_api,
+                model_info=repo_info,
+                working_dir=repo_onnx_working_dir,
+                output_dir=repo_onnx_output_dir
+            )
             logger.info(summary)
 
         files = [p for p in repo_output_dir.glob("**/*") if p.is_file()]
@@ -82,6 +94,18 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
         if len(files) == 0:
             logger.warning("No files were created")
             return
+
+        if "readme" in only:
+            logger.info(f"Run E2E test for sample code blocks in README.md...")
+            with open(repo_output_dir / "README.md", "r") as f:
+                readme_content = f.read()
+            e2e_readme_samples(
+                hf_api=hf_api,
+                model_info=repo_info,
+                model_override_dir=repo_output_dir,
+                readme_content=readme_content,
+            )
+
         if not upload:
             logger.info("Skipping upload")
             return
