@@ -231,7 +231,7 @@ def migrate(
         try:
             migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir_path=output_dir, working_dir_path=working_dir, upload=upload, only=only, log_file_path=LOG_FILE_PATH, auto=auto)
         except Exception as e:
-            logger.error(f"Error migrating {repo_id}: {e}")
+            logger.error(f"Error migrating {repo_id}: {e}", exc_info=True)
             if not auto:
                 if not click.confirm("Do you want to continue?"):
                     logger.info("Migration cancelled by user")
