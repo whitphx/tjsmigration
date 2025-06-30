@@ -325,9 +325,10 @@ def _generate_prompt(content: str, task_type: str, repo_id: str, additional_inst
 3. **Installation instructions**: Add an installation instruction based on the template below unless it already exists. If it already exists, update it to use the new package name. The installation instructions should be added in the "Usage" section.
 4. **Add basic usage example**: Add a basic usage example based on the template below unless it already exists. If there are code examples, update them to use the new package name and signatures as follows. The basic usage example should be added in the "Usage" section.
 5. **Remove inline install comments**: Remove `// npm i @xenova/transformers` comments from code blocks because the installation instructions are already added as above
-6. **Modern JavaScript**: Use `const` instead of `let` or `var` for variables that aren't reassigned
-6. **Add semicolons**: Ensure statements end with semicolons where appropriate
-7. **Keep code formats**: Keep the code formats such as white spaces, line breaks, etc. as is
+6. **Replace `{{ quantized: false }}` to `{{ dtype: "fp32" }}` and `{{ topk: ... }}` to `{{ top_k: ... }}`**: The `quantized` option is no longer supported in Transformers.js. The `topk` option is now renamed to `top_k`.
+7. **Modern JavaScript**: Use `const` instead of `let` or `var` for variables that aren't reassigned
+8. **Add semicolons**: Ensure statements end with semicolons where appropriate
+9. **Keep code formats**: Keep the code formats such as white spaces, line breaks, etc. as is
 
 ## Installation Section Template:
 When adding installation instructions, use this format before the first code example:
