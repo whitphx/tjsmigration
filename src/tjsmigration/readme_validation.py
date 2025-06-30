@@ -30,7 +30,7 @@ You are an expert code analyzer. Extract all code blocks from the provided READM
 
 Look for:
 - Code within triple or more backticks (```). It may be with or without JavaScript language specification (```javascript).
-- Code block containing Transformers.js example code.
+- Code block containing Transformers.js example code written in JavaScript.
 
 DO NOT extract code blocks of installation instructions.
 
