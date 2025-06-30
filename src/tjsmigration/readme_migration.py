@@ -376,8 +376,9 @@ Task type: {task_type}
 - **ADD installation instructions** - Always add them before code examples if missing
 - **ADD basic usage example** - If no code examples exist, add a simple usage example based on the model type
 - DO NOT add explanatory text about what the code does beyond basic usage
+- DO NOT edit the frontmatter
 - DO NOT move example outputs or change code structure
-- DO NOT change the task name and model name passed to the pipeline function from the template above, that are the task type and model name.
+- DO NOT change the task name and model name passed to the pipeline function from the template. The base_model property in the frontmatter is NOT the model name to be used in the usage example.
 - DO NOT add sections that weren't in the original (except installation and basic usage)
 - DO NOT add wrapper text like "Here is the migrated content"
 - PRESERVE comments that are aligned with the sample code semantics (like "// Create a pipeline").
