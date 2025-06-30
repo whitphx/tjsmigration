@@ -146,7 +146,7 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
 @click.option("--repo", required=False, multiple=True, type=str)
 @click.option("--author", required=False, type=str)
 @click.option("--model-name", required=False, type=str)
-@click.option("--task", required=False, multiple=True, type=str)
+@click.option("--task", required=False, type=str)
 @click.option("--filter", required=False, multiple=True, type=str)
 @click.option("--exclude", required=False, multiple=True, type=str)
 @click.option("--output-dir", required=False, type=click.Path(exists=False))
@@ -159,7 +159,7 @@ def migrate(
     repo: tuple[str],
     author: str | None,
     model_name: str | None,
-    task: tuple[str],
+    task: str | None,
     filter: tuple[str],
     exclude: tuple[str],
     output_dir: str | None,
@@ -192,7 +192,7 @@ def migrate(
             library="transformers.js",
             author=author,
             model_name=model_name,
-            task=list(task),
+            pipeline_tag=task,
             filter=filter,
         )
         searched_repo_ids = [r.id for r in search_results]
@@ -413,14 +413,14 @@ def regenerate_readme(
 @click.option("--repo", required=False, multiple=True, type=str)
 @click.option("--author", required=False, type=str)
 @click.option("--model-name", required=False, type=str)
-@click.option("--task", required=False, multiple=True, type=str)
+@click.option("--task", required=False, type=str)
 @click.option("--filter", required=False, multiple=True, type=str)
 @click.option("--output-dir", required=False, type=click.Path(exists=False))
 def preview_readme(
     repo: tuple[str],
     author: str | None,
     model_name: str | None,
-    task: tuple[str],
+    task: str | None,
     filter: tuple[str],
     output_dir: str | None,
 ):
@@ -442,7 +442,7 @@ def preview_readme(
             library="transformers.js",
             author=author,
             model_name=model_name,
-            task=list(task),
+            pipeline_tag=task,
             filter=filter,
         )
         searched_repo_ids = [r.id for r in search_results]
