@@ -298,7 +298,7 @@ If you haven't already, you can install the [Transformers.js](https://huggingfac
 <installation_instructions>
 ```
 
-**Example:** <example_description>
+**Example:** <example_description if specified>
 
 ```js
 <example_code>
@@ -310,6 +310,8 @@ Note: Having a separate repo for ONNX weights is intended to be a temporary solu
 
 def _generate_prompt(content: str, task_type: str, repo_id: str, additional_instructions: list[str]) -> str:
     usage_example, usage_example_description = _get_usage_example(task_type, repo_id)
+    if usage_example_description is None:
+        usage_example_description = ""
 
     prompt = f"""You are migrating a Transformers.js model repository README from v2 to v3. Your task is to update the README content while preserving its original structure and purpose.
 
