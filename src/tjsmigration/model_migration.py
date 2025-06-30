@@ -260,6 +260,11 @@ def create_failed_status_text(status: Literal["onnx_check_failed", "js_e2e_test_
 
 def create_summary_text(results: list[QuantizationResult]) -> str:
     summary = "## Applied Quantizations\n\n"
+
+    if len(results) == 0:
+        summary += "**No new quantized models were added.**\n\n"
+        return summary
+
     for result in results:
         summary += f"### {'✅' if result.success else '❌'} Based on `{result.config.base_model.name}` *{'with' if result.config.slim else 'without'}* slimming\n\n"
         for model_info in result.models:
@@ -287,6 +292,9 @@ def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, working_dir: Path,
     logger.info(f"Quantization configs: {quantization_configs}")
     results = []
     for quantization_config in quantization_configs:
+        if len(quantization_config.quantizations) == 0:
+            logger.warning(f"No new quantization configs needed for {quantization_config.base_model.stem}. Skipping...")
+            continue
         quantization_config.slim = True
         result = call_quantization_script(hf_api=hf_api, model_info=model_info, quantization_config=quantization_config, working_dir=working_dir, output_dir=output_dir)
         if result.error and fallback_to_no_slimming:
