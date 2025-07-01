@@ -166,7 +166,7 @@ class QuantizedModelInfo:
 @dataclass
 class QuantizationResult:
     config: QuantizationConfig
-    error: Exception | None
+    error: str | None
     models: list[QuantizedModelInfo]
 
     def success(self) -> bool:
@@ -204,10 +204,11 @@ def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_
         ]
         logger.info(f"Running command: {cmd}")
         try:
-            subprocess.run(cmd, cwd=TRANSFORMERS_JS_PATH, check=True)
+            subprocess.run(cmd, cwd=TRANSFORMERS_JS_PATH, check=True, capture_output=True, text=True)
         except subprocess.CalledProcessError as e:
-            logger.error(f"Error running quantization script: {e}")
-            return QuantizationResult(config=quantization_config, models=[], error=e)
+            error_message = e.stderr.strip() if e.stderr else str(e)
+            logger.error(f"Error running quantization script: {error_message}")
+            return QuantizationResult(config=quantization_config, models=[], error=error_message)
 
         task_name = infer_transformers_task_type(model_info)
         # Validate the quantized model
@@ -266,7 +267,10 @@ def create_summary_text(results: list[QuantizationResult]) -> str:
         return summary
 
     for result in results:
-        summary += f"### {'✅' if result.success else '❌'} Based on `{result.config.base_model.name}` *{'with' if result.config.slim else 'without'}* slimming\n\n"
+        success = result.success()
+        summary += f"### {'✅' if success else '❌'} Based on `{result.config.base_model.name}` *{'with' if result.config.slim else 'without'}* slimming\n\n"
+        if not success:
+            summary += f"```\n{result.error}\n```\n"
         for model_info in result.models:
             summary += f"↳ {'✅' if model_info.status == "success" else '❌'} `{model_info.mode}`: `{model_info.path.name}` ({create_reason_text(model_info.reason)}{" but " + create_failed_status_text(model_info.status) if model_info.status != "success" else ""})\n"
             if model_info.status == "js_e2e_test_failed":
