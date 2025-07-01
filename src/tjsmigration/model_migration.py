@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Literal
+import dataclasses
 from dataclasses import dataclass
 
 import onnx
@@ -304,7 +305,7 @@ def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, working_dir: Path,
         results.append(result)
         if result.error and fallback_to_no_slimming:
             logger.warning(f"Failed to quantize {quantization_config.base_model.stem} with slimming. Retrying without slimming...")
-            quantization_config.slim = False
+            quantization_config = dataclasses.replace(quantization_config, slim=False)
             result = call_quantization_script(hf_api=hf_api, model_info=model_info, quantization_config=quantization_config, working_dir=working_dir, output_dir=output_dir)
         results.append(result)
 
