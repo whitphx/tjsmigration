@@ -26,28 +26,24 @@ def extract_sample_code_blocks(content: str) -> list[str]:
         model="claude-3-5-haiku-latest",
         output_type=ExtractedCodeBlocks,
         system_prompt="""
-You are an expert code analyzer. Extract code blocks from the provided README.md content that match the following criteria.
+You are an expert code analyzer. Your task is to extract JavaScript code blocks from README.md content that contain working Transformers.js examples.
 
-## Targets
-- Code within triple or more backticks (```). It may be with or without JavaScript language specification (```javascript).
-- Code block containing Transformers.js example code written in JavaScript like this:
-```js
-import { pipeline } from '@huggingface/transformers';
+## What to Extract
+Extract ONLY code blocks that meet ALL of these criteria:
+1. Wrapped in triple backticks (```) with optional language specifier like `javascript`, `js`, or no specifier
+2. Contains a complete, runnable Transformers.js example with:
+   - Import statement from '@huggingface/transformers' (e.g., `import { pipeline } from '@huggingface/transformers'`)
+   - Pipeline creation and execution
+   - Complete example that can be run end-to-end
 
-const pipeline = pipeline('text-classification', 'Xenova/bert-base-uncased');
-const output = await pipeline('I love transformers!');
-```
-It must contain a complete executable example including an import of the `@huggingface/transformers` package and running the pipeline.
+## What NOT to Extract
+- Installation instructions (npm install, yarn add, etc.)
+- Configuration snippets without pipeline execution
+- Code blocks that only show imports without running the pipeline
+- Non-JavaScript code blocks
+- Incomplete examples that don't execute
 
-## Restrictions
-- DO NOT extract code blocks of installation instructions.
-- DO NOT extract code blocks that don't contain module imports and pipeline execution.
-
-## Rules
-For each code block:
-- Extract the complete code
-
-Be thorough and accurate in your extraction.
+## Example of Valid Code Block
 """,
     )
     result = agent.run_sync(content)
