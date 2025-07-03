@@ -42,6 +42,9 @@ Extract ONLY code blocks that meet ALL of these criteria:
 - Code blocks that only show imports without running the pipeline
 - Non-JavaScript code blocks
 - Incomplete examples that don't execute
+- Code snippets that are fragments of larger examples (e.g., loop iterations like `for (let result of results)` without context)
+- Code blocks that lack essential setup like imports or pipeline initialization
+- Partial examples that assume code was executed before the shown snippet
 
 ## Example of Valid Code Block
 """,
