@@ -416,6 +416,7 @@ def regenerate_readme(
 @click.option("--task", required=False, type=str)
 @click.option("--filter", required=False, multiple=True, type=str)
 @click.option("--output-dir", required=False, type=click.Path(exists=False))
+@click.option("--revision", required=False, type=str)
 def preview_readme(
     repo: tuple[str],
     author: str | None,
@@ -423,6 +424,7 @@ def preview_readme(
     task: str | None,
     filter: tuple[str],
     output_dir: str | None,
+    revision: str | None,
 ):
     token = os.getenv("HF_TOKEN")
     if not token:
@@ -461,7 +463,8 @@ def preview_readme(
                 anthropic_client=anthropic_client,
                 model_info=repo_info,
                 output_dir=output_dir,
-                auto=False
+                auto=False,
+                revision=revision,
             )
 
 

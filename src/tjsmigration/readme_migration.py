@@ -328,6 +328,12 @@ def _generate_prompt(content: str, task_type: str, repo_id: str, additional_inst
 4. **Add basic usage example**: Add a basic usage example based on the template below unless it already exists. If there are code examples, update them to use the new package name and signatures as follows. The basic usage example should be added in the "Usage" section.
 5. **Remove inline install comments**: Remove `// npm i @xenova/transformers` comments from code blocks because the installation instructions are already added as above
 6. **Replace `{{ quantized: false }}` to `{{ dtype: "fp32" }}` and `{{ topk: ... }}` to `{{ top_k: ... }}`**: The `quantized` option is no longer supported in Transformers.js. The `topk` option is now renamed to `top_k`.
+    * If `{{ dtype: "fp32" }}` is added, also add a comment `// Options: "fp32", "fp16", "q8", "q4"` like the following:
+    ```
+    const output = await pipe(..., {{
+        dtype: "fp32"  // Options: "fp32", "fp16", "q8", "q4"
+    }});
+    ```
 7. **Modern JavaScript**: Use `const` instead of `let` or `var` for variables that aren't reassigned
 8. **Add semicolons**: Ensure statements end with semicolons where appropriate
 9. **Keep code formats**: Keep the code formats such as white spaces, line breaks, etc. as is
@@ -441,6 +447,7 @@ def migrate_readme(
     model_info: ModelInfo,
     output_dir: Path,
     auto: bool,
+    revision: str | None = None,
 ):
     repo_id = model_info.id
 
@@ -448,6 +455,7 @@ def migrate_readme(
         repo_id=repo_id,
         repo_type="model",
         filename="README.md",
+        revision=revision,
     )
     downloaded_readme_path = Path(downloaded_readme_path)
 
