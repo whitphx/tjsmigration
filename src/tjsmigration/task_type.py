@@ -10,7 +10,7 @@ _SYNONYM_TASK_MAP = {
     "default": "feature-extraction",
     "default-with-past": "feature-extraction-with-past",
     "masked-lm": "fill-mask",
-    "mask-generation": "feature-extraction",
+    # "mask-generation": "feature-extraction",
     "sentence-similarity": "feature-extraction",
     "seq2seq-lm": "text2text-generation",
     "seq2seq-lm-with-past": "text2text-generation-with-past",
@@ -22,7 +22,7 @@ _SYNONYM_TASK_MAP = {
     "translation": "text2text-generation",
     "vision2seq-lm": "image-to-text",
     "zero-shot-classification": "text-classification",
-    "image-feature-extraction": "feature-extraction",
+    # "image-feature-extraction": "feature-extraction",
     "pretraining": "feature-extraction",
     # for backward compatibility and testing (where
     # model task and model type are still the same)
