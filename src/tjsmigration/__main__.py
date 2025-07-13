@@ -330,6 +330,16 @@ def regenerate_readme_for_pr(
         repo_info = hf_api.repo_info(target.repo_id)
         migrate_readme(hf_api=hf_api, anthropic_client=anthropic_client, model_info=repo_info, output_dir=repo_output_dir, auto=auto)
 
+        logger.info(f"Run E2E test for sample code blocks in README.md...")
+        with open(repo_output_dir / "README.md", "r") as f:
+            readme_content = f.read()
+        e2e_readme_samples(
+            hf_api=hf_api,
+            model_info=repo_info,
+            model_override_dir=repo_output_dir,
+            readme_content=readme_content,
+        )
+
         if not upload:
             logger.info("Skipping upload")
             return
