@@ -188,9 +188,10 @@ const output = await translator('Life is like a box of chocolate.', {{
 """, 'Multilingual translation'
     elif task_type == "zero-shot-classification":
         return f"""const classifier = await pipeline('zero-shot-classification', '{repo_id}');
-const text = 'Last week I upgraded my iOS version and ever since then my phone has been overheating whenever I use your app.';
-const labels = [ 'mobile', 'billing', 'website', 'account access' ];
-const output = await classifier(text, labels);
+const output = await classifier(
+    'I love transformers!',
+    ['positive', 'negative']
+);
 """, 'Zero shot classification'
     elif task_type == "feature-extraction":
         return f"""const extractor = await pipeline('feature-extraction', '{repo_id}');
