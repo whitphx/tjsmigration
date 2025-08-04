@@ -320,7 +320,7 @@ def _generate_prompt(content: str, task_type: str, repo_id: str, additional_inst
 1. **Output only the migrated README content** - NO wrapper text, explanations, or meta-commentary
 2. **Preserve original structure** - Keep the same sections, formatting, and overall organization. When adding the installation instructions, add it in the same section as the basic usage example, unless the original README has different structure.
 3. **Minimal changes only** - Only update what's necessary for v3 compatibility
-4. **PRESERVE FRONTMATTER** - Keep all YAML frontmatter (content between --- lines) exactly as-is
+4. **PRESERVE FRONTMATTER** - Keep all YAML frontmatter (content between --- lines) exactly as-is. DO NOT change base_model, library_name, or any other frontmatter fields.
 
 ## Required Changes:
 1. **Package name**: Change `@xenova/transformers` to `@huggingface/transformers`
