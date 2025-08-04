@@ -104,7 +104,7 @@ def prepare_js_e2e_test_directory(
         yield temp_dir, add_onnx_file
 
 
-def run_js_e2e_test(
+def run_js_pipeline_e2e_test(
         task_name: str,
         model_dir: Path,  # e.g. /path/to/onnx-communty/whisper-tiny
         model_base_name: str,  # e.g. decoder_model_merged
@@ -178,7 +178,14 @@ class QuantizationResult:
         return all(result.status == "success" for result in self.models)
 
 
-def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_config: QuantizationConfig, working_dir: Path, output_dir: Path) -> QuantizationResult:
+def call_quantization_script(
+        hf_api: HfApi,
+        model_info: ModelInfo,
+        quantization_config: QuantizationConfig,
+        working_dir: Path,
+        output_dir: Path,
+        ignore_done_task_type_inference_failure: bool,
+) -> QuantizationResult:
     with tempfile.TemporaryDirectory() as temp_input_dir:
         # Copy the base model file into the temp input directory with or without slimming by onnxslim
         base_model = quantization_config.base_model
@@ -214,6 +221,9 @@ def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_
             return QuantizationResult(config=quantization_config, models=[], error=error_message)
 
         task_name = infer_transformers_task_type(model_info)
+        if task_name is None and not ignore_done_task_type_inference_failure:
+            raise ValueError(f"Task type for {model_info.id} could not be inferred. Please specify the task type manually or check the model repository.")
+
         # Validate the quantized model
         logger.info("Validating quantized models...")
         with prepare_js_e2e_test_directory(hf_api, model_info.id) as (temp_dir, add_onnx_file):
@@ -227,7 +237,11 @@ def call_quantization_script(hf_api: HfApi, model_info: ModelInfo, quantization_
                 if validate_onnx_model(quantized_model_path):
                     logger.info(f"{quantized_model_path.name}: ONNX check passed ✳️")
                     add_onnx_file(quantized_model_path)
-                    success, error_message = run_js_e2e_test(task_name, temp_dir, base_model.stem, quantization.type)
+                    if task_name is None:
+                        logger.warning(f"⚠️ Task type for {model_info.id} could not be inferred. Skipping JS-based E2E test.")
+                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="success", e2e_test_error_message=None))
+                        continue
+                    success, error_message = run_js_pipeline_e2e_test(task_name, temp_dir, base_model.stem, quantization.type)
                     if success:
                         logger.info(f"{quantized_model_path.name}: JS-based E2E test passed ✳️")
                         logger.info(f"Copying {quantized_model_path} to {output_dir / quantized_model_path.name}")
@@ -282,7 +296,14 @@ def create_summary_text(results: list[QuantizationResult]) -> str:
     return summary
 
 
-def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, working_dir: Path, output_dir: Path, fallback_to_no_slimming: bool = True) -> str:
+def migrate_model_files(
+        hf_api: HfApi,
+        model_info: ModelInfo,
+        working_dir: Path,
+        output_dir: Path,
+        fallback_to_no_slimming: bool = True,
+        ignore_done_task_type_inference_failure: bool = False,
+) -> str:
     repo_id = model_info.id
 
     downloaded_path = hf_api.snapshot_download(repo_id=repo_id, repo_type="model")
@@ -303,12 +324,26 @@ def migrate_model_files(hf_api: HfApi, model_info: ModelInfo, working_dir: Path,
             logger.warning(f"No new quantization configs needed for {quantization_config.base_model.stem}. Skipping...")
             continue
         quantization_config.slim = True
-        result = call_quantization_script(hf_api=hf_api, model_info=model_info, quantization_config=quantization_config, working_dir=working_dir, output_dir=output_dir)
+        result = call_quantization_script(
+            hf_api=hf_api,
+            model_info=model_info,
+            quantization_config=quantization_config,
+            working_dir=working_dir,
+            output_dir=output_dir,
+            ignore_done_task_type_inference_failure=ignore_done_task_type_inference_failure
+        )
         results.append(result)
         if result.error and fallback_to_no_slimming:
             logger.warning(f"Failed to quantize {quantization_config.base_model.stem} with slimming. Retrying without slimming...")
             quantization_config = dataclasses.replace(quantization_config, slim=False)
-            result = call_quantization_script(hf_api=hf_api, model_info=model_info, quantization_config=quantization_config, working_dir=working_dir, output_dir=output_dir)
+            result = call_quantization_script(
+                hf_api=hf_api,
+                model_info=model_info,
+                quantization_config=quantization_config,
+                working_dir=working_dir,
+                output_dir=output_dir,
+                ignore_done_task_type_inference_failure=ignore_done_task_type_inference_failure
+            )
         results.append(result)
 
     summary = create_summary_text(results)

@@ -309,7 +309,7 @@ Note: Having a separate repo for ONNX weights is intended to be a temporary solu
 """
 
 
-def _generate_prompt(content: str, task_type: str, repo_id: str, additional_instructions: list[str]) -> str:
+def _generate_prompt(content: str, task_type: str | None, repo_id: str, additional_instructions: list[str]) -> str:
     usage_example, usage_example_description = _get_usage_example(task_type, repo_id)
     if usage_example_description is None:
         usage_example_description = ""
@@ -404,7 +404,7 @@ Task type: {task_type}
     return prompt
 
 
-def call_readme_update_llm(anthropic_client: Anthropic, orig_content: str, task_type: str, repo_id: str, additional_instructions: list[str]) -> str:
+def call_readme_update_llm(anthropic_client: Anthropic, orig_content: str, task_type: str | None, repo_id: str, additional_instructions: list[str]) -> str:
         prompt = _generate_prompt(orig_content, task_type, repo_id, additional_instructions)
 
         response = anthropic_client.messages.create(
@@ -418,7 +418,7 @@ def call_readme_update_llm(anthropic_client: Anthropic, orig_content: str, task_
         proposed_content = response.content[0].text.strip()
         return proposed_content
 
-def update_readme_content(anthropic_client: Anthropic, orig_content: str, task_type: str, repo_id: str, auto: bool) -> str:
+def update_readme_content(anthropic_client: Anthropic, orig_content: str, task_type: str | None, repo_id: str, auto: bool) -> str:
     additional_instructions = []
     while True:
         proposed_content = call_readme_update_llm(anthropic_client, orig_content, task_type, repo_id, additional_instructions)
@@ -449,6 +449,7 @@ def migrate_readme(
     output_dir: Path,
     auto: bool,
     revision: str | None = None,
+    ignore_done_task_type_inference_failure: bool = False,
 ):
     repo_id = model_info.id
 
@@ -464,6 +465,8 @@ def migrate_readme(
         orig_readme_content = f.read()
 
     task_type = infer_transformers_task_type(model_info=model_info)
+    if task_type is None and not ignore_done_task_type_inference_failure:
+        raise ValueError(f"Task type for {model_info.id} could not be inferred. Please specify the task type manually or check the model repository.")
 
     new_readme_content = update_readme_content(anthropic_client, orig_readme_content, task_type, repo_id, auto)
 

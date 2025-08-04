@@ -31,22 +31,21 @@ You are an expert code analyzer. Your task is to extract JavaScript code blocks 
 ## What to Extract
 Extract ONLY code blocks that meet ALL of these criteria:
 1. Wrapped in triple backticks (```) with optional language specifier like `javascript`, `js`, or no specifier
+   - DO NOT include the backticks in the output.
 2. Contains a complete, runnable Transformers.js example with:
    - Import statement from '@huggingface/transformers' (e.g., `import { pipeline } from '@huggingface/transformers'`)
    - Pipeline creation and execution
    - Complete example that can be run end-to-end
 
 ## What NOT to Extract
-- Installation instructions (npm install, yarn add, etc.)
-- Configuration snippets without pipeline execution
-- Code blocks that only show imports without running the pipeline
-- Non-JavaScript code blocks
-- Incomplete examples that don't execute
-- Code snippets that are fragments of larger examples (e.g., loop iterations like `for (let result of results)` without context)
-- Code blocks that lack essential setup like imports or pipeline initialization
-- Partial examples that assume code was executed before the shown snippet
-
-## Example of Valid Code Block
+- DO NOT extract Installation instructions (npm install, yarn add, etc.)
+- DO NOT extract Configuration snippets without pipeline execution
+- DO NOT extract Code blocks that only show imports without running the pipeline
+- DO NOT extract Non-JavaScript code blocks
+- DO NOT extract Incomplete examples that don't execute
+- DO NOT extract Code snippets that are fragments of larger examples (e.g., loop iterations like `for (let result of results)` without context)
+- DO NOT extract Code blocks that lack essential setup like imports or pipeline initialization
+- DO NOT extract Partial examples that assume code was executed before the shown snippet
 """,
     )
     result = agent.run_sync(content)
@@ -55,14 +54,14 @@ Extract ONLY code blocks that meet ALL of these criteria:
 
 def run_js_e2e_test_on_sample_code(
     sample_code: str,
-    task_type: str
+    task_type: str | None
 ):
     setup_code = """
 import { env } from '@huggingface/transformers';
 
 env.allowLocalModels = true;
 """
-    if task_type != "text-to-speech":
+    if task_type != "text-to-speech" and task_type is not None:
         # text-to-speech pipeline imports a remote model (https://github.com/huggingface/transformers.js/blob/8d6c400438df42e1828908e06fa03342c4465129/src/pipelines.js#L2890)
         setup_code += """
 env.allowRemoteModels = false;

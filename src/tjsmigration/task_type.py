@@ -68,7 +68,8 @@ def map_from_synonym(pipeline_tag: str) -> str:
     return _SYNONYM_TASK_MAP.get(pipeline_tag, pipeline_tag)
 
 
-def infer_transformers_task_type(model_info: ModelInfo) -> str:
+def infer_transformers_task_type(model_info: ModelInfo) -> str | None:
+    inferred_task_name = None
     pipeline_tag = model_info.pipeline_tag
     transformers_info = model_info.transformersInfo
     if pipeline_tag is not None:

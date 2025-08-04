@@ -11,7 +11,7 @@ import click
 from huggingface_hub import HfApi
 from anthropic import Anthropic
 
-from .model_migration import migrate_model_files, parse_quantized_model_filename, prepare_js_e2e_test_directory, validate_onnx_model, run_js_e2e_test
+from .model_migration import migrate_model_files, parse_quantized_model_filename, prepare_js_e2e_test_directory, validate_onnx_model, run_js_pipeline_e2e_test
 from .readme_migration import migrate_readme
 from .readme_validation import e2e_readme_samples
 from .tempdir import temp_dir_if_none
@@ -44,7 +44,18 @@ def get_user_confirmation_to_upload(repo_id: str, files: list[Path], summary: st
     return click.confirm(text)
 
 
-def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, output_dir_path: str | None, working_dir_path: str | None, upload: bool, only: list[str], log_file_path: Path | None, auto: bool):
+def migrate_repo(
+        hf_api: HfApi,
+        anthropic_client: Anthropic,
+        repo_id: str,
+        output_dir_path: str | None,
+        working_dir_path: str | None,
+        upload: bool,
+        only: list[str],
+        log_file_path: Path | None,
+        auto: bool,
+        ignore_done_task_type_inference_failure: bool
+):
     logger.info(f"Migrating {repo_id}...")
     logger.info(f"Upload: {upload}")
     logger.info(f"Only: {only}")
@@ -77,6 +88,7 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
                 model_info=repo_info,
                 output_dir=repo_output_dir,
                 auto=auto,
+                ignore_done_task_type_inference_failure=ignore_done_task_type_inference_failure,
             )
         if "model" in only:
             repo_onnx_working_dir.mkdir(parents=True, exist_ok=True)
@@ -85,7 +97,8 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
                 hf_api=hf_api,
                 model_info=repo_info,
                 working_dir=repo_onnx_working_dir,
-                output_dir=repo_onnx_output_dir
+                output_dir=repo_onnx_output_dir,
+                ignore_done_task_type_inference_failure=ignore_done_task_type_inference_failure,
             )
             logger.info("Model migration summary:\n" + summary)
 
@@ -155,6 +168,7 @@ def migrate_repo(hf_api: HfApi, anthropic_client: Anthropic, repo_id: str, outpu
 @click.option("--only", required=False, multiple=True, type=click.Choice(["readme", "model"]), default=["readme", "model"])
 @click.option("--auto", required=False, is_flag=True)
 @click.option("--ignore-done", required=False, is_flag=True)
+@click.option("--ignore-task-type-inference-failure", required=False, is_flag=True)
 def migrate(
     repo: tuple[str],
     author: str | None,
@@ -168,6 +182,7 @@ def migrate(
     only: list[str],
     auto: bool,
     ignore_done: bool,
+    ignore_task_type_inference_failure: bool
 ):
     token = os.getenv("HF_TOKEN")
     if not token:
@@ -229,7 +244,18 @@ def migrate(
 
     for repo_id in repo:
         try:
-            migrate_repo(hf_api=hf_api, anthropic_client=anthropic_client, repo_id=repo_id, output_dir_path=output_dir, working_dir_path=working_dir, upload=upload, only=only, log_file_path=LOG_FILE_PATH, auto=auto)
+            migrate_repo(
+                hf_api=hf_api,
+                anthropic_client=anthropic_client,
+                repo_id=repo_id,
+                output_dir_path=output_dir,
+                working_dir_path=working_dir,
+                upload=upload,
+                only=only,
+                log_file_path=LOG_FILE_PATH,
+                auto=auto,
+                ignore_done_task_type_inference_failure=ignore_task_type_inference_failure
+            )
         except Exception as e:
             logger.error(f"Error migrating {repo_id}: {e}", exc_info=True)
             if not auto:
@@ -289,7 +315,7 @@ def test(repo: str, path: list[str]):
             base_model_name, quantization_type = parse_quantized_model_filename(p)
 
             logger.info(f"Running JS E2E test for {p}, quantized version of [{base_model_name}] with [{quantization_type}] mode...")
-            success, error_message = run_js_e2e_test(task_name, temp_dir, base_model_name, quantization_type)
+            success, error_message = run_js_pipeline_e2e_test(task_name, temp_dir, base_model_name, quantization_type)
             if not success:
                 print(f"Failed to run JS E2E test for {p}: {error_message}")
             else:
