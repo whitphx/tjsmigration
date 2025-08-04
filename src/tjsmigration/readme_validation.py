@@ -61,7 +61,12 @@ def run_js_e2e_test_on_sample_code(
 import { env } from '@huggingface/transformers';
 
 env.allowLocalModels = true;
+"""
+    if task_type != "text-to-speech":
+        # text-to-speech pipeline imports a remote model (https://github.com/huggingface/transformers.js/blob/8d6c400438df42e1828908e06fa03342c4465129/src/pipelines.js#L2890)
+        setup_code += """
 env.allowRemoteModels = false;
+
 """
 
     js_code = setup_code + sample_code
@@ -70,6 +75,8 @@ env.allowRemoteModels = false;
         expected_error = "Unable to load audio from path/URL since `AudioContext` is not available in your environment."  # It doesn't work in Node.js environment
     else:
         expected_error = None
+
+    logger.debug("Running JS E2E test with code:\n%s", js_code)
 
     try:
         subprocess.run(["node", "-e", js_code], cwd=ROOT, check=True, capture_output=True, text=True)
