@@ -54,6 +54,8 @@ class QuantizationConfig:
     quantizations: list[RequiredQuantization]
 
 
+IGNORED_FILES = ["decoder_model_merged"]
+
 def get_base_model_basenames(onnx_dir: Path) -> list[str]:
     base_models = []
     for onnx_file in onnx_dir.glob("*.onnx"):
@@ -61,7 +63,7 @@ def get_base_model_basenames(onnx_dir: Path) -> list[str]:
         is_quantized = (
             any(basename.endswith(f"_{get_quantized_model_suffix(quantization_type)}") for quantization_type in QUANTIZATION_TYPES)
         )
-        if not is_quantized:
+        if not is_quantized and basename not in IGNORED_FILES:
             base_models.append(onnx_file.stem)
     return base_models
 
