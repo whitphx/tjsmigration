@@ -385,7 +385,7 @@ Task type: {task_type}
 - DO NOT add explanatory text about what the code does beyond basic usage
 - DO NOT edit the frontmatter
 - DO NOT move example outputs or change code structure
-- DO NOT change the task name and model name passed to the pipeline function from the template. The base_model property in the frontmatter is NOT the model name to be used in the usage example.
+- DO NOT change the task name and model name passed to the pipeline function from the Basic Usage Example Template. The base_model property in the frontmatter is NOT the model name to be used in the usage example.
 - DO NOT add sections that weren't in the original (except installation and basic usage)
 - DO NOT add wrapper text like "Here is the migrated content"
 - PRESERVE comments that are aligned with the sample code semantics (like "// Create a pipeline").
