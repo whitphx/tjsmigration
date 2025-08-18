@@ -52,9 +52,8 @@ class QuantizationConfig:
     base_model: Path
     slim: bool
     quantizations: list[RequiredQuantization]
+    rename_base_model_to: str | None = None  # If provided, the base model will be renamed to this name
 
-
-IGNORED_FILES = ["decoder_model_merged"]
 
 def get_base_model_basenames(onnx_dir: Path) -> list[str]:
     base_models = []
@@ -63,7 +62,7 @@ def get_base_model_basenames(onnx_dir: Path) -> list[str]:
         is_quantized = (
             any(basename.endswith(f"_{get_quantized_model_suffix(quantization_type)}") for quantization_type in QUANTIZATION_TYPES)
         )
-        if not is_quantized and basename not in IGNORED_FILES:
+        if not is_quantized:
             base_models.append(onnx_file.stem)
     return base_models
 
@@ -106,7 +105,7 @@ def prepare_js_e2e_test_directory(
 
 def run_js_pipeline_e2e_test(
         task_name: str,
-        model_dir: Path,  # e.g. /path/to/onnx-communty/whisper-tiny
+        model_dir: Path,  # e.g. /path/to/onnx-community/whisper-tiny
         model_base_name: str,  # e.g. decoder_model_merged
         quantization_type: str  # e.g. fp16
 ) -> tuple[bool, str | None]:
@@ -153,7 +152,15 @@ def get_quantization_configs(onnx_dir: Path) -> list[QuantizationConfig]:
     base_model_basenames = get_base_model_basenames(onnx_dir)
     quantization_configs = []
     for base_model_basename in base_model_basenames:
-        quantization_configs.append(get_quantization_config_for_base_model(onnx_dir, base_model_basename))
+        config = get_quantization_config_for_base_model(onnx_dir, base_model_basename)
+        if base_model_basename == "decoder_model_merged":
+            # Some transformers.js v2 decoder-only models used the older `decoder_model_merged*.onnx` name,
+            # but now it's simply `model.onnx` because we don't need to export multiple decoders and merge anymore.
+            if "model" in base_model_basenames:
+                continue
+            else:
+                config.rename_base_model_to = "model.onnx"
+        quantization_configs.append(config)
     return quantization_configs
 
 
@@ -187,20 +194,24 @@ def call_quantization_script(
         ignore_done_task_type_inference_failure: bool,
 ) -> QuantizationResult:
     with tempfile.TemporaryDirectory() as temp_input_dir:
-        # Copy the base model file into the temp input directory with or without slimming by onnxslim
         base_model = quantization_config.base_model
-        temp_source_file = Path(temp_input_dir) / base_model.name
+
+        temp_source_file_name = quantization_config.rename_base_model_to or base_model.name
+        temp_source_base_name = Path(temp_source_file_name).stem
+
+        # Copy the base model file into the temp input directory with or without slimming by onnxslim
+        temp_source_file_path = Path(temp_input_dir) / temp_source_file_name
         if quantization_config.slim:
-            logger.info(f"Slimming {base_model} to {temp_source_file}")
+            logger.info(f"Slimming {base_model} to {temp_source_file_path}")
             cmd = [
                 "uv", "run",
                 "--with-requirements", "scripts/requirements.txt",
-                "onnxslim", str(base_model), str(temp_source_file)
+                "onnxslim", str(base_model), str(temp_source_file_path)
             ]
             subprocess.run(cmd, cwd=TRANSFORMERS_JS_PATH, check=True)
         else:
-            logger.info(f"Copying {base_model} to {temp_source_file}")
-            shutil.copy(base_model, temp_source_file)
+            logger.info(f"Copying {base_model} to {temp_source_file_path}")
+            shutil.copy(base_model, temp_source_file_path)
 
         # Run the quantization script
         modes = [quantization.type for quantization in quantization_config.quantizations]
@@ -230,7 +241,7 @@ def call_quantization_script(
             results = []
             for quantization in quantization_config.quantizations:
                 suffix = get_quantized_model_suffix(quantization.type)
-                quantized_model_path = working_dir / f"{base_model.stem}_{suffix}.onnx"
+                quantized_model_path = working_dir / f"{temp_source_base_name}_{suffix}.onnx"
                 if not quantized_model_path.exists():
                     raise FileNotFoundError(f"Quantized model {quantized_model_path} not found")
 
@@ -241,7 +252,7 @@ def call_quantization_script(
                         logger.warning(f"⚠️ Task type for {model_info.id} could not be inferred. Skipping JS-based E2E test.")
                         results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="success", e2e_test_error_message=None))
                         continue
-                    success, error_message = run_js_pipeline_e2e_test(task_name, temp_dir, base_model.stem, quantization.type)
+                    success, error_message = run_js_pipeline_e2e_test(task_name, temp_dir, temp_source_base_name, quantization.type)
                     if success:
                         logger.info(f"{quantized_model_path.name}: JS-based E2E test passed ✳️")
                         logger.info(f"Copying {quantized_model_path} to {output_dir / quantized_model_path.name}")
@@ -254,6 +265,10 @@ def call_quantization_script(
                 else:
                     logger.warning(f"{quantized_model_path.name}: ONNX check failed ❌")
                     results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="onnx_check_failed", e2e_test_error_message=None))
+
+        if quantization_config.rename_base_model_to:
+            logger.info(f"Adding the base model {quantization_config.base_model.name} as {quantization_config.rename_base_model_to} because it is required to be renamed")
+            shutil.copy(quantization_config.base_model, output_dir / quantization_config.rename_base_model_to)
 
         return QuantizationResult(config=quantization_config, models=results, error=None)
 
@@ -286,6 +301,8 @@ def create_summary_text(results: list[QuantizationResult]) -> str:
     for result in results:
         success = result.success()
         summary += f"### {'✅' if success else '❌'} Based on `{result.config.base_model.name}` *{'with' if result.config.slim else 'without'}* slimming\n\n"
+        if result.config.rename_base_model_to:
+            summary += f"**The base model `{result.config.base_model.name}` has been renamed to `{result.config.rename_base_model_to}`.**\n\n"
         if not success:
             summary += f"```\n{result.error}\n```\n"
         for model_info in result.models:
@@ -344,7 +361,7 @@ def migrate_model_files(
                 output_dir=output_dir,
                 ignore_done_task_type_inference_failure=ignore_done_task_type_inference_failure
             )
-        results.append(result)
+            results.append(result)
 
     summary = create_summary_text(results)
 
