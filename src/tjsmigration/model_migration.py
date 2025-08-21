@@ -150,10 +150,11 @@ def get_quantization_config_for_base_model(onnx_dir: Path, base_model_basename: 
 
 def get_quantization_configs(onnx_dir: Path) -> list[QuantizationConfig]:
     base_model_basenames = get_base_model_basenames(onnx_dir)
+    has_encoder = any(basename.startswith("encoder_") for basename in base_model_basenames)
     quantization_configs = []
     for base_model_basename in base_model_basenames:
         config = get_quantization_config_for_base_model(onnx_dir, base_model_basename)
-        if base_model_basename == "decoder_model_merged":
+        if not has_encoder and base_model_basename == "decoder_model_merged":
             # Some transformers.js v2 decoder-only models used the older `decoder_model_merged*.onnx` name,
             # but now it's simply `model.onnx` because we don't need to export multiple decoders and merge anymore.
             if "model" in base_model_basenames:
