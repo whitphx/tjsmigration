@@ -110,7 +110,7 @@ def migrate_repo(
             return
 
         if "readme" in only:
-            logger.info(f"Run E2E test for sample code blocks in README.md...")
+            logger.info("Run E2E test for sample code blocks in README.md...")
             with open(repo_output_dir / "README.md", "r") as f:
                 readme_content = f.read()
             e2e_readme_samples(
@@ -138,7 +138,7 @@ def migrate_repo(
             commit_description=summary,
             create_pr=True,
         )
-        logger.info(f"Uploaded files to the Hugging Face Hub")
+        logger.info("Uploaded files to the Hugging Face Hub")
 
         print(f"Pull request created: {commit_info.pr_url}")
 
