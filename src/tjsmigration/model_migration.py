@@ -95,6 +95,13 @@ def prepare_js_e2e_test_directory(
         temp_dir = Path(root_temp_dir) / Path(source_repo_path).name
         shutil.copytree(source_repo_path, temp_dir)
 
+        # Transformers.js v3 expects `model.onnx` instead of `decoder_model_merged.onnx`.
+        decoder_model_path = temp_dir / "onnx" / "decoder_model_merged.onnx"
+        if decoder_model_path.exists():
+            new_decoder_model_path = temp_dir / "onnx" / "model.onnx"
+            logger.info(f"Renaming {decoder_model_path} to {new_decoder_model_path}")
+            decoder_model_path.rename(new_decoder_model_path)
+
         # 2. Merge the target files into the temporary directory
         onnx_dir = temp_dir / "onnx"
         def add_onnx_file(file_path: Path):
@@ -169,7 +176,8 @@ def get_quantization_configs(onnx_dir: Path) -> list[QuantizationConfig]:
 class QuantizedModelInfo:
     mode: str
     reason: Literal["missing", "invalid"]
-    path: Path
+    path: Path | None
+    external_path: Path | None
     status: Literal["success", "onnx_check_failed", "js_e2e_test_failed"]
     e2e_test_error_message: str | None
 
@@ -197,10 +205,9 @@ def call_quantization_script(
     with tempfile.TemporaryDirectory() as temp_input_dir:
         base_model = quantization_config.base_model
 
-        temp_source_file_name = quantization_config.rename_base_model_to or base_model.name
-        temp_source_base_name = Path(temp_source_file_name).stem
-
         # Copy the base model file into the temp input directory with or without slimming by onnxslim
+        # Rename the file as well if `quantization_config.rename_base_model_to` is set.
+        temp_source_file_name = quantization_config.rename_base_model_to or base_model.name
         temp_source_file_path = Path(temp_input_dir) / temp_source_file_name
         if quantization_config.slim:
             logger.info(f"Slimming {base_model} to {temp_source_file_path}")
@@ -241,35 +248,54 @@ def call_quantization_script(
         with prepare_js_e2e_test_directory(hf_api, model_info.id) as (temp_dir, add_onnx_file):
             results = []
             for quantization in quantization_config.quantizations:
+                model_base_name = Path(temp_source_file_name).stem
                 suffix = get_quantized_model_suffix(quantization.type)
-                quantized_model_path = working_dir / f"{temp_source_base_name}_{suffix}.onnx"
+                quantized_model_file_name = f"{model_base_name}_{suffix}.onnx"
+                quantized_model_path = working_dir / quantized_model_file_name
                 if not quantized_model_path.exists():
                     raise FileNotFoundError(f"Quantized model {quantized_model_path} not found")
+                external_file_path = working_dir / (quantized_model_file_name + "_data") # path/to/model.onnx_data, Ref: https://github.com/huggingface/transformers.js/blob/28852a2ad92e9bf410af11fe03e2b8b51e96c0d6/scripts/utils.py#L53-L54
+                if not external_file_path.exists():
+                    external_file_path = None
 
                 if validate_onnx_model(quantized_model_path):
                     logger.info(f"{quantized_model_path.name}: ONNX check passed ✳️")
+
+                    logger.info(f"Copying {quantized_model_path} to JS-based E2E test environment")
                     add_onnx_file(quantized_model_path)
+                    if external_file_path:
+                        logger.info(f"Copying {external_file_path} to JS-based E2E test environment")
+                        add_onnx_file(external_file_path)
+
                     if task_name is None:
                         logger.warning(f"⚠️ Task type for {model_info.id} could not be inferred. Skipping JS-based E2E test.")
                         results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="success", e2e_test_error_message=None))
                         continue
-                    success, error_message = run_js_pipeline_e2e_test(task_name, temp_dir, temp_source_base_name, quantization.type)
+
+                    success, error_message = run_js_pipeline_e2e_test(
+                        task_name=task_name,
+                        model_dir=temp_dir,
+                        model_base_name=model_base_name,
+                        quantization_type=quantization.type
+                    )
                     if success:
                         logger.info(f"{quantized_model_path.name}: JS-based E2E test passed ✳️")
-                        logger.info(f"Copying {quantized_model_path} to {output_dir / quantized_model_path.name}")
-                        output_path = output_dir / quantized_model_path.name
-                        shutil.copy(quantized_model_path, output_path)
-                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=output_path, status="success", e2e_test_error_message=None))
+                        output_quantized_model_path = output_dir / quantized_model_path.name
+                        logger.info(f"Copying {quantized_model_path} to {output_quantized_model_path}")
+                        shutil.copy(quantized_model_path, output_quantized_model_path)
+                        if external_file_path:
+                            output_external_model_path = output_dir / external_file_path.name
+                            logger.info(f"Copying {external_file_path} to {output_external_model_path}")
+                            shutil.copy(external_file_path, output_external_model_path)
+                        else:
+                            output_external_model_path = None
+                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=output_quantized_model_path, external_path=output_external_model_path, status="success", e2e_test_error_message=None))
                     else:
                         logger.warning(f"{quantized_model_path.name}: JS-based E2E test failed ❌")
-                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="js_e2e_test_failed", e2e_test_error_message=error_message))
+                        results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=None, external_path=None, status="js_e2e_test_failed", e2e_test_error_message=error_message))
                 else:
                     logger.warning(f"{quantized_model_path.name}: ONNX check failed ❌")
-                    results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=quantized_model_path, status="onnx_check_failed", e2e_test_error_message=None))
-
-        if quantization_config.rename_base_model_to:
-            logger.info(f"Adding the base model {quantization_config.base_model.name} as {quantization_config.rename_base_model_to} because it is required to be renamed")
-            shutil.copy(quantization_config.base_model, output_dir / quantization_config.rename_base_model_to)
+                    results.append(QuantizedModelInfo(mode=quantization.type, reason=quantization.reason, path=None, external_path=None, status="onnx_check_failed", e2e_test_error_message=None))
 
         return QuantizationResult(config=quantization_config, models=results, error=None)
 

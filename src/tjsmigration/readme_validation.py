@@ -100,13 +100,13 @@ def e2e_readme_samples(
 
     with prepare_js_e2e_test_directory(hf_api, repo_id) as (temp_dir, add_onnx_file):
         if model_override_dir:
-            for p in model_override_dir.glob("**/*.onnx"):
+            for p in list(model_override_dir.glob("**/*.onnx")) + list(model_override_dir.glob("**/*.onnx_data")):
                 logger.info(f"Adding ONNX file to the E2E test directory: {p}")
                 add_onnx_file(p)
 
         for sample_code_block in sample_code_blocks:
             logger.info(f"Checking sample code block:\n{"\n".join([f"  {line}" for line in sample_code_block.split('\n')])}")
-            if not model_info.id in sample_code_block:
+            if model_info.id not in sample_code_block:
                 raise ValueError(f"Sample code block does not contain the model ID: {model_info.id}. Something went wrong.")
             sample_code_block = sample_code_block.replace(model_info.id, str(temp_dir))
             success, error_message = run_js_e2e_test_on_sample_code(sample_code_block, task_type)
