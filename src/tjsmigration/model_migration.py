@@ -335,7 +335,7 @@ def create_summary_text(results: list[QuantizationResult]) -> str:
         if not success:
             summary += f"```\n{result.error}\n```\n"
         for model_info in result.models:
-            summary += f"↳ {'✅' if model_info.status == "success" else '❌'} `{model_info.mode}`: `{model_info.path.name}` ({create_reason_text(model_info.reason)}{" but " + create_failed_status_text(model_info.status) if model_info.status != "success" else ""})\n"
+            summary += f"↳ {'✅' if model_info.status == "success" else '❌'} `{model_info.mode}`: `{model_info.path.name if model_info.path else ''}` ({create_reason_text(model_info.reason)}{" but " + create_failed_status_text(model_info.status) if model_info.status != "success" else ""})\n"
             if model_info.status == "js_e2e_test_failed":
                 summary += f"```\n{model_info.e2e_test_error_message}\n```\n"
         summary += "\n"
