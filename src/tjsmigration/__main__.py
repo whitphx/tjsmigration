@@ -154,6 +154,18 @@ def migrate_repo(
                 )
                 f.write("\n")
 
+        # Close existing pull requests if any, only if the author is me and created by this script
+        my_username = hf_api.whoami()["name"]
+        existing_prs = hf_api.get_repo_discussions(repo_id=repo_id, repo_type="model", discussion_type="pull_request", author=my_username, discussion_status="open")
+        for pr in existing_prs:
+            if pr.num == commit_info.pr_num:
+                continue
+            if pr.author != my_username or pr.title != "Add/update the quantized ONNX model files and README.md for Transformers.js v3":
+                continue
+            logger.info(f"Closing existing pull request #{pr.num} for {repo_id} by {my_username} (title: {pr.title})")
+            comment = f"Superseded by {commit_info.pr_url}"
+            hf_api.change_discussion_status(repo_id=repo_id, repo_type="model", discussion_num=pr.num, new_status="closed", comment=comment)
+
 
 @cli.command()
 @click.option("--repo", required=False, multiple=True, type=str)
