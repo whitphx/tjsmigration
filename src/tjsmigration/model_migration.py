@@ -95,12 +95,14 @@ def prepare_js_e2e_test_directory(
         temp_dir = Path(root_temp_dir) / Path(source_repo_path).name
         shutil.copytree(source_repo_path, temp_dir)
 
-        # Transformers.js v3 expects `model.onnx` instead of `decoder_model_merged.onnx`.
-        decoder_model_path = temp_dir / "onnx" / "decoder_model_merged.onnx"
-        if decoder_model_path.exists():
-            new_decoder_model_path = temp_dir / "onnx" / "model.onnx"
-            logger.info(f"Renaming {decoder_model_path} to {new_decoder_model_path}")
-            decoder_model_path.rename(new_decoder_model_path)
+        # Transformers.js v3 expects `model.onnx` instead of `decoder_model_merged.onnx` in case of decoder-only models.
+        has_encoder = len(list((temp_dir / "onnx").glob("encoder_*.onnx"))) > 0
+        if not has_encoder:
+            decoder_model_path = temp_dir / "onnx" / "decoder_model_merged.onnx"
+            if decoder_model_path.exists():
+                new_decoder_model_path = temp_dir / "onnx" / "model.onnx"
+                logger.info(f"Renaming {decoder_model_path} to {new_decoder_model_path}")
+                decoder_model_path.rename(new_decoder_model_path)
 
         # 2. Merge the target files into the temporary directory
         onnx_dir = temp_dir / "onnx"
